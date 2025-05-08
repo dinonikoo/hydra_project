@@ -1,4 +1,4 @@
-module Hydra.Sources.Strings where
+module Hydra.Sources.myMath where
 
 import           Hydra.Dsl.Annotations
 import           Hydra.Dsl.Bootstrap
