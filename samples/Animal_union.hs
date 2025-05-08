@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.Myexample where
+module Hydra.Sources.Animal_union where
 
 import           Hydra.Dsl.Annotations
 import           Hydra.Dsl.Bootstrap
