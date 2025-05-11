@@ -5,7 +5,6 @@ import           Hydra.Dsl.Bootstrap
 import qualified Hydra.Dsl.Terms       as Terms
 import           Hydra.Dsl.Types       as Types
 import           Hydra.Sources.Tier0.Core
-import           Hydra.Dsl.TTerms (true, false)
 import qualified Data.List             as L
 import qualified Data.Map              as M
 import qualified Data.Set              as S
@@ -44,8 +43,8 @@ ifElseDef = definitionInModule myLogicModule "ifElse" $
       (Equality.equalInt32
         (Math.mod (Base.var "x") (Base.int32 2))
         (Base.int32 0))
-      (Hydra.Dsl.TTerms.true)
-      (Hydra.Dsl.TTerms.false)
+      (Base.boolean True)
+      (Base.boolean False)
 
 notDef :: TElement (Int -> Bool)
 notDef = definitionInModule myLogicModule "not" $
