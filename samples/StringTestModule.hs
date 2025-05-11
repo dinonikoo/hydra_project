@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.UserModel where
+module Hydra.Sources.StringTestModule where
 
 import           Hydra.Dsl.Base          as Base
 import qualified Hydra.Dsl.Core          as Core
