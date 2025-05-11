@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.UserModel where
+module Hydra.Sources.PersonType where
 
 -- Standard type-level Tier-1 imports
 import           Hydra.Dsl.Annotations
