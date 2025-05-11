@@ -1,0 +1,5 @@
+fromJavaToDSL/Lib/
+fromJavaToDSL/Scripts/
+fromJavaToDSL/__pycache__/
+fromJavaToDSL/*.pyc
+fromJavaToDSL/.venv/
