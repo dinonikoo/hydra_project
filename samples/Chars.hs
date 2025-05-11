@@ -26,7 +26,7 @@ charModule = Module (Namespace "hydra.chars") elements [hydraCoreModule] [hydraC
     elements = [
         --el isAlphaNumFunc,
         el isLowerFunc,
-        el isUpperFunc  
+        el isUpperFunc,  
         el toLowerFunc, 
         el toUpperFunc
 
