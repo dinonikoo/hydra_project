@@ -51,7 +51,7 @@ charModule = Module (Namespace "hydra.chars") elements [hydraCoreModule] [hydraC
 -- Haskell	Data.Char.isLower :: Char -> Bool	      isLower 'a' → True
 -- Java	    Character.isLowerCase(char c)	          Character.isLowerCase('a') → true
 
-isLowerFunc :: TElement (Int -> Int)
+isLowerFunc :: TElement (Int -> Bool)
 isLowerFunc = definitionInModule charModule "isLower" $
   lambda "c" $ Chars.isLower (Base.var "c")
 
@@ -60,7 +60,7 @@ isLowerFunc = definitionInModule charModule "isLower" $
 --Haskell    Data.Char.isUpper :: Char -> Bool	   isUpper 'A' → True
 --Java    	 Character.isUpperCase(char c)	       Character.isUpperCase('A') → true
 
-isUpperFunc :: TElement (Int -> Int)
+isUpperFunc :: TElement (Int -> Bool)
 isUpperFunc = definitionInModule charModule "isUpper" $
   lambda "c" $ Chars.isUpper (Base.var "c")
 
