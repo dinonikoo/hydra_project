@@ -1,0 +1,115 @@
+def indent(text, level): # отступы
+    return "\n".join("  " * level + line for line in text.splitlines())
+
+def hydra_type(java_type):
+    # перевод типов данных для полей класса
+    if java_type in ("Integer", "int", "integer"):
+        return "Types.int32"
+    elif java_type in ("Long", "long"):
+        return "Types.int64"
+    elif java_type in ("Boolean", "boolean"):
+        return "Types.boolean"
+    elif java_type == "String":
+        return "Types.string"
+    elif isinstance(java_type, dict) and java_type.get("type") == "List":
+        inner = hydra_type(java_type["of"])
+        return f"Types.list {inner}"
+    else:
+        return "Types.string"
+
+def format_value(value_ast):
+    # обработка значений
+    if value_ast["type"] == "literal":
+        val = value_ast["value"]
+        return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
+    elif value_ast["type"] == "function_call":
+        func = value_ast["name"]
+        args = ", ".join(format_value(arg) for arg in value_ast["arguments"])
+        if func == "asList":
+            return f"Base.list [{args}]"
+        # TODO: добавить остальное
+    return "-- unsupported expression"
+
+def generate_class_module(module_name, classes):
+    elements = []
+    for cls in classes:
+        fields = []
+        for f in cls["elements"]:
+            field_type = hydra_type(f["field_type"])
+            fields.append(f'  "{f["name"]}" Types.>: {field_type}')
+        fields_block = ",\n".join(fields)
+        fields_block_ = indent(fields_block, 3)
+        el = f'  def "{cls["name"]}" $ \n      A.doc "This type generated from Java" $ \n      Types.record [\n{fields_block_}\n  ]'
+        elements.append(el)
+    # БЛОК С ЭЛЕМЕНТАМИ
+    elements_block = ",\n".join(elements) # неймспейс берём по имени модуля, имя модуля - по имени класса/интерфейса, остальное фиксированное
+    return f'''{module_name}Module :: Module
+{module_name}Module = Module ns elements [hydraCoreModule] [hydraCoreModule] $
+    Just "{module_name} class generated code"
+  where
+    ns = Namespace "hydra.{module_name.lower()}" 
+    def = datatype ns
+    core = typeref $ moduleNamespace hydraCoreModule
+    testing = typeref ns
+
+    elements = [
+{indent(elements_block, 2)}
+    ]
+'''
+
+def generate_interface_module(module_name, iface):
+    elements = []
+    for el in iface["elements"]:
+        if el["type"] == "const":
+            field_type = hydra_type(el["field_type"])
+            name = el["name"]
+            if "value_ast" in el:
+                val_expr = format_value(el["value_ast"])
+            else:
+                val_expr = f'Base.{field_type.split(".")[-1]} {el["value"]}'
+            block = f'''{name}Def :: TElement {field_type.split(".")[-1]}
+{name}Def = definitionInModule {module_name}Module "{name}" $
+  {val_expr}'''
+        elif el["type"] == "function":
+            arg_type = hydra_type(el["parameter_type"])
+            ret_type = hydra_type(el["return_type"])
+            body = f'Strings.length (Base.string "{el["return_statement"]["value"]}")'
+            block = f'''{el["name"]}Def :: TElement ({arg_type.split(".")[-1]} -> {ret_type.split(".")[-1]})
+{el["name"]}Def = definitionInModule {module_name}Module "{el["name"]}" $
+  Base.lambda "{el["parameter_name"]}" $
+    {body}'''
+        else:
+            continue
+        elements.append(f'el {el["name"]}Def')
+
+    elements_block = ",\n".join(elements)
+    elements_block_ = indent(elements_block, 1)
+
+    header = f'''{module_name}Module :: Module
+{module_name}Module = Module ns elements [hydraCoreModule] [hydraCoreModule] $
+    Just "{module_name} interface generated code"
+  where
+    ns = Namespace "hydra.{module_name.lower()}"
+    def = datatype ns
+    core = typeref $ moduleNamespace hydraCoreModule
+    testing = typeref ns
+
+    elements = [
+{indent(elements_block_, 2)}
+      ] 
+    
+{block}
+'''
+    return header
+
+def generate(data):
+    #print(data)
+    output = []
+    for unit in data:
+        for item in unit:
+            #print("ITEM", item)
+            if item["type"] == "class":
+                output.append(generate_class_module(item["name"], [item]))
+            elif item["type"] == "interface":
+                output.append(generate_interface_module(item["name"], item))
+    return "\n\n".join(output)
