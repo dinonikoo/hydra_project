@@ -1,4 +1,5 @@
 from javaParser import *
+from translationDSL import *
 
 def check_directory(directory_):
     if Path(directory_).exists():
@@ -20,3 +21,5 @@ if __name__ == "__main__":
         directory = input()
 
     result = parse(directory)
+    a = generate(result)
+    print(a)
