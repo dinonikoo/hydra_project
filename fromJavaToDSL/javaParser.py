@@ -1,0 +1,289 @@
+from pathlib import Path
+import re
+
+TOKEN_REGEX = re.compile(r'''
+    "(?:.\\|[^"])*"        |  # строковые литералы
+    \d+                    |  # целые числа
+    [A-Za-z_]\w*           |  # переменные
+    ==|!=|<=|>=|&&|\|\|    |  # двойные операторы
+    [+\-*/%<>=?:(){}\.]         # одиночные операторы и скобки
+''', re.VERBOSE)
+
+
+def parse_code(code):
+    #поддержка вложенности - например для List, внутри может быть много List, вложенных друг в друга
+    def parse_type(type_str):
+        type_str = type_str.strip()
+
+        if type_str.startswith("List<") and type_str.endswith(">"):
+            inner = type_str[5:-1].strip()
+            return {'type': 'List', 'of': parse_type(inner)}
+        else:
+            return {'type': type_str}
+
+    lines = code.strip().split('\n')
+    structures = []
+    current_structure = None
+    current_fields = []
+    current_functions = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if len(line) == 0:
+            i += 1
+            continue
+
+        if line.startswith("public class") or line.startswith("public interface"):
+            if current_structure:
+                current_structure["elements"] = current_fields + current_functions
+                structures.append(current_structure)
+            current_fields = []
+            current_functions = []
+            keywords = line.split()
+            entity_type = keywords[1]  # class или interface
+            entity_name = keywords[2]
+            current_structure = {
+                "name": entity_name,
+                "type": entity_type,
+                "elements": []
+            }
+
+        elif line.startswith("static"):  # начало функции
+            function_lines = [line]
+            brace_count = line.count("{") - line.count("}")
+            i += 1
+
+            while brace_count > 0 and i < len(lines):
+                next_line = lines[i].strip()
+                function_lines.append(next_line)
+                brace_count += next_line.count("{") - next_line.count("}")
+                i += 1
+
+            function_block = " ".join(function_lines)
+            function_signature = function_block.split("{")[0]
+            return_statement = None
+
+            if "return" in function_block:
+                return_part = function_block.split("return")[1]
+                return_statement = return_part.split(";")[0].strip()
+
+            function_signature = function_signature.replace("static", "").strip()
+            parts = function_signature.split("(")
+            return_type_and_name = parts[0].strip().split()
+            return_type = return_type_and_name[0]
+            function_name = return_type_and_name[1]
+            params = parts[1].replace(")", "").strip()
+            params = params.split()
+            param_type = params[0]
+            param_name = params[1]
+
+            tokens = tokenize_return(return_statement)
+            ast = parse_return(tokens)
+
+            current_functions.append({
+                "type": "function",
+                "name": function_name,
+                "return_type": return_type,
+                "parameter_type": param_type,
+                "parameter_name": param_name,
+                "return_statement": ast
+            })
+            continue  # уже увеличили i когда по строчкам скакали
+        elif "=" in line and not line.endswith(";"):
+            # начало многострочного поля
+            multiline_field = [line]
+            i += 1
+            while i < len(lines) and not lines[i].strip().endswith(";"):
+                multiline_field.append(lines[i].strip())
+                i += 1
+            if i < len(lines):
+                multiline_field.append(lines[i].strip())
+            line = " ".join(multiline_field).strip()
+            # собрали поле, даже если оно на разных строчках (как например массивы)
+            if "=" in line:
+                line = re.sub(r'\bjava\.util\.List<', 'List<', line)
+                # чтобы привести все к одному виду - List
+                decl, value = line.split("=", 1)
+                value = value.strip().strip(";")
+                parts = decl.strip().split()
+                tokens_ = tokenize_return(value)
+                ast_ = parse_return(tokens_)
+                if len(parts) >= 2:
+                    type_ = parts[-2]
+                    name = parts[-1]
+                    current_fields.append({
+                        "type": "const",
+                        "name": name,
+                        "field_type": parse_type(type_), # разбор типа на части,
+                        # в итоге будет {'type': 'List', 'of': {'type': 'String'}} например
+                        "value_ast": ast_ # разбор на части, предполагается, что могут быть вызовы функций
+                    })
+            i += 1
+            continue
+        elif line.endswith(";"):
+            if "=" in line:
+                decl, value = line.split("=", 1)
+                value = value.strip().strip(";").strip('"')
+                parts = decl.strip().split()
+                if len(parts) >= 2:
+                    type_ = parts[-2]
+                    name = parts[-1]
+                    current_fields.append({
+                        "type": "const",
+                        "name": name,
+                        "field_type": type_,
+                        "value": value
+                    })
+            else:
+                parts = line.strip().strip(";").split()
+                if len(parts) >= 2:
+                    type_ = parts[-2]
+                    name = parts[-1]
+                    current_fields.append({
+                        "type": "field",
+                        "name": name,
+                        "field_type": type_
+                    })
+
+        i += 1
+
+    if current_structure:
+        current_structure["elements"] = current_fields + current_functions
+        structures.append(current_structure)
+
+    return structures
+
+def tokenize_return(e):
+    e = re.sub(r'([A-Za-z_]\w*)\.(toLowerCase|toUpperCase|isEmpty|length)',
+                  lambda m: m.group(0) if m.group(1) == 'Character' else f'{m.group(2)}String({m.group(1)})', e)
+    # у строчек и символов есть ряд функций с одинаковыми названиями, но они по разному называются.
+    # чтобы потом не было путаницы, я аргумент ВСЕГДА пишу в скобочках и помечаю функцию String, если она для строчек
+    # эта штука как раз все приводит в единый вид
+    e = re.sub(r'\b(?:java\.util\.)?Arrays\.asList', 'asList', e)
+    # чтобы java.util.Arrays.asList и Arrays.asList не разбивался на токены
+    e = e.strip()
+    tokens = TOKEN_REGEX.findall(e)
+    #print(tokens, "токены")
+    return tokens
+
+def parse_return(tokens):
+    # тернарные операторы
+    def parse_ternary(tokens_):
+        condition = parse_logic(tokens_)
+        if len(tokens_) > 0 and tokens_[0] == '?':
+            tokens_.pop(0)  # убираем '?'
+            then_expr = parse_logic(tokens_)
+            tokens_.pop(0)  # убираем ':'
+            else_expr = parse_logic(tokens_)
+            return {"type": "ternary", "condition": condition, "then": then_expr, "else": else_expr}
+        return condition
+
+    # логические операторы
+    def parse_logic(tokens_):
+        left = parse_comparison(tokens_)
+        while len(tokens_) > 0 and tokens_[0] in ['&&', '||']:
+            op = tokens_.pop(0)
+            right = parse_comparison(tokens_)
+            left = {"type": "binary", "operator": op, "left": left, "right": right}
+        return left
+
+    # сравнения, равенство
+    def parse_comparison(tokens_):
+        left = parse_arithmetic(tokens_)
+        while len(tokens_) > 0 and tokens_[0] in ['==', '!=', '<', '>', '<=', '>=']:
+            op = tokens_.pop(0)
+            right = parse_arithmetic(tokens_)
+            left = {"type": "binary", "operator": op, "left": left, "right": right}
+        return left
+
+    # арифметические операторы
+    def parse_arithmetic(tokens_):
+        left = parse_unary(tokens_)
+        while len(tokens_) > 0 and tokens_[0] in ['+', '-', '*', '/', '%']:
+            op = tokens_.pop(0)
+            right = parse_unary(tokens_)
+            left = {"type": "binary", "operator": op, "left": left, "right": right}
+        return left
+
+    def parse_unary(tokens_): #это унарные операторы, а также переменные и разные литералы
+        if len(tokens_) == 0:
+            return None
+
+        if tokens_[0] in ('!', '-'):
+            op = tokens_.pop(0)
+            operand = parse_unary(tokens_)
+            return {"type": "unary", "operator": op, "operand": operand} # унарное: отрицание или минус
+
+        # скобки
+        if tokens_[0] == '(':
+            tokens_.pop(0)
+            expr = parse_ternary(tokens_)
+            if tokens_[0] == ')':
+                tokens_.pop(0)
+            return expr
+
+        # число, сохраняется именно КАК ЧИСЛО
+        if re.match(r'\d+', tokens_[0]):
+            return {"type": "literal", "value": int(tokens_.pop(0))}
+
+        if tokens_[0].startswith('"') and tokens_[0].endswith('"'):
+            return {"type": "literal", "value": tokens_.pop(0)[1:-1]}  # строчка без кавычек. ИМЕННО СТРОЧКА, поэтому путаницы не будет
+
+        # перед тем как объявить токен просто переменной, нужно проверить не функция ли это
+        if is_function_call_start(tokens_):
+            return parse_function_call(tokens_)
+
+        # variable - переменная
+        if re.match(r'[A-Za-z_]\w*', tokens_[0]):
+            return {"type": "variable", "name": tokens_.pop(0)}
+
+        #raise ValueError("Внимание: неизвестный токен ", tokens_[0])
+
+    def is_function_call_start(tokens_):
+        # обработка например Character . isLowerCase (
+        if len(tokens_) >= 4 and re.match(r'[A-Za-z_]\w*', tokens_[0]) and tokens_[1] == '.' and re.match(r'[A-Za-z_]\w*',
+                                                                                                       tokens_[2]) and \
+                tokens_[3] == '(':
+            return True
+        # обработка например toLowerCase (
+        if len(tokens_) >= 2 and re.match(r'[A-Za-z_]\w*', tokens_[0]) and tokens_[1] == '(':
+            return True
+        return False
+
+    def parse_function_call(tokens_): # проверка что вызывается функция
+        name_parts = []
+        while tokens_ and tokens_[0] not in ['(', ')', ',', ';']:
+            if tokens_[0] == '.':
+                tokens_.pop(0)
+            else:
+                name_parts.append(tokens_.pop(0))
+            if tokens_[0] == '(':
+                break
+
+        function_name = '.'.join(name_parts)
+
+        tokens_.pop(0)  # убираем (
+        args = []
+        while tokens_[0] != ')':
+            args.append(parse_ternary(tokens_))  # допускаем вложенность. может быть несколько разных конструкций друг в друге
+            if tokens_[0] == ',':
+                tokens_.pop(0)
+        tokens_.pop(0)  # убираем )
+
+        return {"type": "function_call", "name": function_name, "arguments": args}
+
+    return parse_ternary(tokens)
+
+def parse(directory):
+    result = []
+    java_list = list(Path(directory).rglob("*.java"))
+    if len(java_list) == 0:
+        print("Внимание: найдено 0 файлов *.java")
+    for file in java_list:
+        with open(file, 'r') as c:
+            code = c.read()
+            structures = parse_code(code)
+            print(structures)
+            result.append(structures)
+    return result
