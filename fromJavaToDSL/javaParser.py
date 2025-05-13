@@ -157,6 +157,8 @@ def parse_code(code):
 def tokenize_return(e):
     e = re.sub(r'([A-Za-z_]\w*)\.(toLowerCase|toUpperCase|isEmpty|length)',
                   lambda m: m.group(0) if m.group(1) == 'Character' else f'{m.group(2)}String({m.group(1)})', e)
+    #TODO: isEmpty некорректно парсится, проверить, нормально ли работают функции, вызывающ. через точку
+    
     # у строчек и символов есть ряд функций с одинаковыми названиями, но они по разному называются.
     # чтобы потом не было путаницы, я аргумент ВСЕГДА пишу в скобочках и помечаю функцию String, если она для строчек
     # эта штука как раз все приводит в единый вид
@@ -284,6 +286,6 @@ def parse(directory):
         with open(file, 'r') as c:
             code = c.read()
             structures = parse_code(code)
-            print(structures)
+            #print(structures)
             result.append(structures)
     return result
