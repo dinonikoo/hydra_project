@@ -143,11 +143,12 @@ constructModule mod coders pairs = do
     aliases = importAliasesForModule mod
 
     typeToClass pair@(el, _) = do
-      isSer <- isSerializable el
-      let imports = if isSer
-                    then [Java.ImportDeclarationSingleType $ Java.SingleTypeImportDeclaration $ javaTypeName $ Java.Identifier "java.io.Serializable"]
-                    else []
-      decl <- declarationForType isSer aliases pair
+      --isSer <- isSerializable el
+      --let imports = if isSer
+      --              then [Java.ImportDeclarationSingleType $ Java.SingleTypeImportDeclaration $ javaTypeName $ Java.Identifier "java.io.Serializable"]
+      --              else []
+      let imports = []
+      decl <- declarationForType False aliases pair
       return (elementName el,
         Java.CompilationUnitOrdinary $ Java.OrdinaryCompilationUnit Nothing imports [decl])
 
@@ -823,10 +824,10 @@ innerClassRef aliases name local = Java.Identifier $ id ++ "." ++ local
     Java.Identifier id = nameToJavaName aliases name
 
 interfaceTypes :: Bool -> [Java.InterfaceType]
-interfaceTypes isSer = if isSer then [javaSerializableType] else []
-  where
-    javaSerializableType = Java.InterfaceType $
-      Java.ClassType [] Java.ClassTypeQualifierNone (javaTypeIdentifier "Serializable") []
+interfaceTypes _ = []
+ -- where
+ --   javaSerializableType = Java.InterfaceType $
+ --     Java.ClassType [] Java.ClassTypeQualifierNone (javaTypeIdentifier "Serializable") []
 
 isLambdaBoundVariable :: Name -> Bool
 isLambdaBoundVariable (Name v) = L.length v <= 4
