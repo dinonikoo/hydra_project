@@ -14,9 +14,22 @@ var_list: NAME+
 type: NAME "->" type     -> function_type
     | NAME               -> base_type
 
-?expression: comparison
+?expression: if_expr
+
+?if_expr: "if" expression "then" expression "else" expression -> if_else
+        | or_expr
+
+?or_expr: or_expr "||" and_expr         -> or_
+        | and_expr
+
+?and_expr: and_expr "&&" not_expr       -> and_
+         | not_expr
+
+?not_expr: "not" not_expr               -> not_
+         | comparison
 
 ?comparison: arithmetic "==" arithmetic   -> eq
+           | arithmetic "/=" arithmetic   -> noteq
            | arithmetic ">" arithmetic    -> gt
            | arithmetic "<" arithmetic    -> lt
            | arithmetic ">=" arithmetic   -> gte
@@ -36,8 +49,9 @@ type: NAME "->" type     -> function_type
 ?factor: ESCAPED_STRING     -> string
        | "True"             -> true
        | "False"            -> false
-       | "negate" factor        -> neg
+       | "negate" factor    -> neg
        | NUMBER             -> number
+       | NAME factor        -> function_call
        | NAME               -> variable
        | "(" expression ")"
 
@@ -60,11 +74,14 @@ haskell_parser = Lark(haskell_grammar, start="start")
 
 
 def infer_return_type(expr: str) -> str:
-    """
-    Определяет тип возвращаемого значения выражения."""
-
     if "Base.string" in expr:
-        return "String"  # Строки имеют приоритет
+        return "String"
+
+    if "Chars.isLower" in expr or "Chars.isUpper" in expr:
+        return "Bool"
+
+    if "Chars.toLower" in expr or "Chars.toUpper" in expr:
+        return "Int"
 
     bool_operators = ["equal", "lt", "gt", "lte", "gte", "Base.true", "Base.false"]
     for op in bool_operators:
@@ -78,6 +95,7 @@ def infer_return_type(expr: str) -> str:
         "Math.div",
         "Math.mod",
         "Math.rem",
+        "Math.neg",
         "Base.int32",
     ]
     for func in int_functions:
@@ -104,7 +122,11 @@ class HydraTransformer(Transformer):
 {function_defs}"""
 
     def function_decl(self, items):
-        self.last_decl = (str(items[0]), str(items[1]))
+        name = str(items[0])
+        type_str = str(items[1])
+        if "Char" in type_str:
+            raise ValueError(f"❌ Тип 'Char' не поддерживается: {name} :: {type_str}")
+        self.last_decl = (name, type_str)
         return "ok"
 
     def function_def(self, items):
@@ -117,9 +139,9 @@ class HydraTransformer(Transformer):
 
         type_str = self.last_decl[1]
         type_parts = [t.strip() for t in type_str.split("->")]
-
         expected_arg_count = len(type_parts) - 1
         actual_arg_count = len(args)
+
         if actual_arg_count != expected_arg_count:
             raise ValueError(
                 f"Несоответствие типов: функция '{name}' принимает {actual_arg_count} аргументов, но тип говорит о {expected_arg_count}"
@@ -129,7 +151,7 @@ class HydraTransformer(Transformer):
         inferred = infer_return_type(expr)
         if inferred != expected_return_type:
             raise ValueError(
-                f"Несоответствие возвращаемого типа в функции '{name}': из вашей сигнатуры Haskell ожидается '{expected_return_type}', но получается '{inferred}'"
+                f"Несоответствие возвращаемого типа в функции '{name}': из сигнатуры ожидается '{expected_return_type}', но получается '{inferred}'"
             )
 
         dsl_expr = expr
@@ -138,9 +160,11 @@ class HydraTransformer(Transformer):
 
         arg_types = " -> ".join(t.replace("Integer", "Int") for t in type_parts)
 
-        function_def = f"""{name}Def :: TElement ({arg_types})
-    {name}Def = definitionInModule {self.module_name} \"{name}\" $
-    {dsl_expr}"""
+        function_def = (
+            f"{name}Def :: TElement ({arg_types})\n"
+            f'{name}Def = definitionInModule {self.module_name} "{name}" $\n'
+            f"{dsl_expr}"
+        )
 
         self.definitions.append((name, function_def))
         return ""
@@ -151,40 +175,61 @@ class HydraTransformer(Transformer):
     def base_type(self, items):
         return str(items[0])
 
+    def _check_no_unsupported(self, *args):
+        for arg in args:
+            if "Base.char" in str(arg):
+                raise ValueError("❌ Char не поддерживается")
+
     def add(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.add ({items[0]}) ({items[1]})"
 
     def sub(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.sub ({items[0]}) ({items[1]})"
 
     def mul(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.mul ({items[0]}) ({items[1]})"
 
     def div(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.div ({items[0]}) ({items[1]})"
 
     def mod(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.mod ({items[0]}) ({items[1]})"
 
     def rem(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.rem ({items[0]}) ({items[1]})"
 
     def neg(self, items):
+        self._check_no_unsupported(*items)
         return f"Math.neg ({items[0]})"
 
     def eq(self, items):
+        self._check_no_unsupported(*items)
         return f"Equality.equalInt32 ({items[0]}) ({items[1]})"
 
+    def noteq(self, items):
+        self._check_no_unsupported(*items)
+        return f"Logic.not (Equality.equalInt32 ({items[0]}) ({items[1]}))"
+
     def lt(self, items):
+        self._check_no_unsupported(*items)
         return f"Equality.ltInt32 ({items[0]}) ({items[1]})"
 
     def gt(self, items):
+        self._check_no_unsupported(*items)
         return f"Equality.gtInt32 ({items[0]}) ({items[1]})"
 
     def lte(self, items):
+        self._check_no_unsupported(*items)
         return f"Equality.lteInt32 ({items[0]}) ({items[1]})"
 
     def gte(self, items):
+        self._check_no_unsupported(*items)
         return f"Equality.gteInt32 ({items[0]}) ({items[1]})"
 
     def number(self, items):
@@ -202,6 +247,31 @@ class HydraTransformer(Transformer):
     def variable(self, items):
         return f'(Base.var "{items[0]}")'
 
+    def and_(self, items):
+        return f"Logic.and ({items[0]}) ({items[1]})"
+
+    def or_(self, items):
+        return f"Logic.or ({items[0]}) ({items[1]})"
+
+    def not_(self, items):
+        return f"Logic.not ({items[0]})"
+
+    def if_else(self, items):
+        return f"Logic.ifElse ({items[0]}) ({items[1]}) ({items[2]})"
+
+    def function_call(self, items):
+        func = str(items[0])
+        arg = items[1]
+        if func == "isUpper":
+            return f"Chars.isUpper ({arg})"
+        if func == "isLower":
+            return f"Chars.isLower ({arg})"
+        if func == "toUpper":
+            return f"Chars.toUpper ({arg})"
+        if func == "toLower":
+            return f"Chars.toLower ({arg})"
+        raise ValueError(f"❌ Неизвестная функция: {func}")
+
 
 # ======== CONVERTER FUNCTION =========
 def process_haskell_to_hydra(
@@ -218,6 +288,8 @@ def process_haskell_to_hydra(
             "import Hydra.Dsl.Terms as Terms",
             "import qualified Hydra.Dsl.Lib.Math as Math",
             "import qualified Hydra.Dsl.Lib.Equality as Equality",
+            "import qualified Hydra.Dsl.Lib.Logic as Logic",
+            "import qualified Hydra.Dsl.Lib.Chars as Chars",
         ]
     )
 
@@ -238,13 +310,11 @@ module Hydra.Sources.{file_name} where
 
 # ======== I/O =========
 if __name__ == "__main__":
-    # === CONFIG ===
     INPUT_PATH = "C:/2 курс/курсовая/test1.hs"
     OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs"
     FILE_NAME = "MyMath"
     SAVED_NAME = "hydra.test"
     MODULE_NAME = "myModuleTest"
-    # ==============
 
     try:
         with open(INPUT_PATH, "r", encoding="utf-8") as f:
@@ -272,4 +342,6 @@ if __name__ == "__main__":
 -Проверка имени функции -> исключ
 -Проверка выходного параметра (если человек пишет, что выходит Bool, по выражнеию получается Int)(проблема с функциями типа addMe :: String ->String  addMe x = x, хоть они и бесполезны)
 --Добавить сравнение equal.string
+--В гидре чаров нет - задание через код буквы!
+--Нет неравно это not equal =>  /=
 """
