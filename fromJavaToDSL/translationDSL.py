@@ -2,7 +2,8 @@
 
 #TODO: все сделать в один модуль?
 
-#TODO: некорректная обработка вложенных функций
+#TODO: заменять функции из структуры на функции из гидры
+#TODO: тернарный оператор
 
 
 def indent(text, level): # отступы
@@ -12,6 +13,8 @@ def hydra_type(java_type):
     # перевод типов данных для полей класса
     if java_type in ("Integer", "int", "integer"):
         return "Types.int32"
+    elif java_type in ("Short", "short"):
+        return "Types.int16"
     elif java_type in ("Long", "long"):
         return "Types.int64"
     elif java_type in ("Boolean", "boolean"):
@@ -61,12 +64,26 @@ def format_value(value_ast):
             return f"Base.int32 {val}"
         #return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
     elif value_ast["type"] == "function_call":
+        function_map = {
+            "Character.isLowerCase": "Chars.isLower",
+            "Character.isUpperCase": "Chars.isUpper",
+            "Character.toUpperCase": "Chars.toUpper",
+            "Character.toLowerCase": "Chars.toLower",
+            "isEmptyString": "Strings.isEmpty",
+            "lengthString": "Strings.length",
+            "toLowerCaseString": "Strings.toLower",
+            "toUpperCaseString": "Strings.toUpper",
+        }
         func = value_ast["name"]
-        args = ", ".join(format_value(arg) for arg in value_ast["arguments"])
+        args = [format_value(arg) for arg in value_ast["arguments"]]
+        mapped_func = function_map.get(func, func)
+
         if func == "asList":
-            return f"Base.list [{args}]"
+            return f"Base.list [{', '.join(args)}]"
+        elif func in function_map:
+            return f"{mapped_func}({args[0]})" if len(args) == 1 else f"{mapped_func}({')('.join(args)})"
         else:
-            return f"{func}({args})"  # можно подставить шаблоны под известные функции
+            return f"{func}({', '.join(args)})"
 
     elif value_ast["type"] == "binary":
         left = format_value(value_ast["left"])
@@ -75,7 +92,14 @@ def format_value(value_ast):
         op_map = {
             "+": "Math.add",
             "-": "Math.sub",
-            "*": "Math.mul"
+            "*": "Math.mul",
+            "/": "Math.div",
+            "%": "Math.rem",
+            "==": "Equality.equalInt32",
+            ">": "Equality.gtInt32",
+            ">=": "Equality.gteInt32",
+            "<": "Equality.ltInt32",
+            "<=": "Equality.lteInt32"
         }
         if op in op_map:
             return f'{op_map[op]} ({left}) ({right})'
@@ -83,11 +107,16 @@ def format_value(value_ast):
             return f"({left} {op} {right})"
 
     elif value_ast["type"] == "variable":
-        return value_ast["name"]
+        return f'Base.var "{value_ast["name"]}"'
+
     elif value_ast["type"] == "unary":
         operand = format_value(value_ast["operand"])
         op = value_ast["operator"]
+
+        if op == "-":
+            return f"Math.neg ({operand})"
         return f"({op}{operand})"
+
     return "-- unsupported expression"
 
 

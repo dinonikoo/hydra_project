@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import re
-import json
 
 TOKEN_REGEX = re.compile(r'''
     '(?:\\.|[^'])'         |  # символьные литералы  - чтобы не путать 'A' и A, где 'A' char, A - переменная
