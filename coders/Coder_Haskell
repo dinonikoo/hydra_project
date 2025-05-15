@@ -331,25 +331,25 @@ toTypeDeclarations namespaces el term = withTrace ("type element " ++ unName (el
     t <- coreDecodeType term
 
     isSer <- isSerializable el
-    let deriv = H.Deriving $ if isSer
-                  then rawName <$> ["Eq", "Ord", "Read", "Show"]
-                  else []
+    --let deriv = H.Deriving $ if isSer
+    --              then rawName <$> ["Eq", "Ord", "Read", "Show"]
+    --              else []
     let (vars, t') = unpackForallType g t
     let hd = declHead hname $ L.reverse vars
     decl <- case stripType t' of
       TypeRecord rt -> do
         cons <- recordCons lname $ rowTypeFields rt
-        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeData [] hd [cons] [deriv]
+        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeData [] hd [cons] []
       TypeUnion rt -> do
         cons <- CM.mapM (unionCons g lname) $ rowTypeFields rt
-        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeData [] hd cons [deriv]
+        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeData [] hd cons []
       TypeWrap (WrappedType tname wt) -> do
         cons <- newtypeCons el wt
-        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeNewtype [] hd [cons] [deriv]
+        return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeNewtype [] hd [cons] []
       _ -> if newtypesNotTypedefs
         then do
           cons <- newtypeCons el t'
-          return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeNewtype [] hd [cons] [deriv]
+          return $ H.DeclarationData $ H.DataDeclaration H.DataOrNewtypeNewtype [] hd [cons] []
         else do
           htype <- adaptTypeToHaskellAndEncode namespaces t
           return $ H.DeclarationType (H.TypeDeclaration hd htype)
