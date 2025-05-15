@@ -50,17 +50,46 @@ def hydra_type_TElement(java_type):
         return "unknown"
 
 def format_value(value_ast):
-    # обработка значений
     if value_ast["type"] == "literal":
         val = value_ast["value"]
-        return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
+        if "value_type" in value_ast:
+            if value_ast["value_type"] == "string":
+                return f'Base.string "{val}"'
+            else:
+                return f"Base.int32 {ord(val)}"
+        else:
+            return f"Base.int32 {val}"
+        #return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
     elif value_ast["type"] == "function_call":
         func = value_ast["name"]
         args = ", ".join(format_value(arg) for arg in value_ast["arguments"])
         if func == "asList":
             return f"Base.list [{args}]"
-        # TODO: добавить остальное
+        else:
+            return f"{func}({args})"  # можно подставить шаблоны под известные функции
+
+    elif value_ast["type"] == "binary":
+        left = format_value(value_ast["left"])
+        right = format_value(value_ast["right"])
+        op = value_ast["operator"]
+        op_map = {
+            "+": "Math.add",
+            "-": "Math.sub",
+            "*": "Math.mul"
+        }
+        if op in op_map:
+            return f'{op_map[op]} ({left}) ({right})'
+        else:
+            return f"({left} {op} {right})"
+
+    elif value_ast["type"] == "variable":
+        return value_ast["name"]
+    elif value_ast["type"] == "unary":
+        operand = format_value(value_ast["operand"])
+        op = value_ast["operator"]
+        return f"({op}{operand})"
     return "-- unsupported expression"
+
 
 def generate_class_module(module_name, classes):
     elements = []
@@ -97,18 +126,24 @@ def generate_interface_module(module_name, iface):
             field_type = hydra_type(el["field_type"])
             field_type_TElement = hydra_type_TElement(el["field_type"])
             name = el["name"]
-
+            #print("ОБРАБОТКА ПОЛЯ ", name)
+            #print(el)
             if "value_ast" in el:
                 val_expr = format_value(el["value_ast"])
-            else:
-                val_expr = f'Base.{field_type.split(".")[-1]} {format_value(el["value"])}'
+                #print("TRUE", el["value_ast"])
+                # пишем Base.тип, если возвращается простое значение
+                if el["value_ast"]["type"] == "literal":
+                    val_expr = f'Base.{field_type.split(".")[-1]} {val_expr}'
+            else: # если в составе есть функции, возвращается TTerm и Base.тип не нужно
+                val_expr = f'{format_value(el["value"])}'
+
             block = f'''{name}Def :: TElement {field_type_TElement}
 {name}Def = definitionInModule {module_name}Module "{name}" $
   {val_expr}'''
         elif el["type"] == "function":
             arg_type = hydra_type_TElement(el["parameter_type"])
             ret_type = hydra_type_TElement(el["return_type"])
-            body = f'Strings.length (Base.string "{el["return_statement"]["value"]}")'
+            body = format_value(el["return_statement"])
             block = f'''{el["name"]}Def :: TElement ({arg_type} -> {ret_type})
 {el["name"]}Def = definitionInModule {module_name}Module "{el["name"]}" $
   Base.lambda "{el["parameter_name"]}" $

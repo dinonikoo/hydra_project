@@ -1,10 +1,4 @@
 #TODO: добавить Math.floorMod
-
-#TODO: исправить ошибки парсинга некоторых функций через точку
-
-#TODO: при присваивании переменной значения 1 + 1 + 1 неверно парсится выражение. Возможно стоит проверить строку на наличие
-# операторов/функций, чтобы корректно парсить
-
 #TODO: наследование?
 
 from pathlib import Path
@@ -12,12 +6,14 @@ import re
 import json
 
 TOKEN_REGEX = re.compile(r'''
-    "(?:.\\|[^"])*"        |  # строковые литералы
+    '(?:\\.|[^'])'         |  # символьные литералы  - чтобы не путать 'A' и A, где 'A' char, A - переменная
+    "(?:.\\|[^"])*"        |  # строковые литералы - аналогично для строк чтоб не путать
     \d+                    |  # целые числа
     [A-Za-z_]\w*           |  # переменные
     ==|!=|<=|>=|&&|\|\|    |  # двойные операторы
     [+\-*/%<>=?:(){}\.]         # одиночные операторы и скобки
 ''', re.VERBOSE)
+
 
 
 def parse_code(code):
@@ -258,7 +254,22 @@ def parse_return(tokens):
             return {"type": "literal", "value": int(tokens_.pop(0))}
 
         if tokens_[0].startswith('"') and tokens_[0].endswith('"'):
-            return {"type": "literal", "value": tokens_.pop(0)[1:-1]}  # строчка без кавычек. ИМЕННО СТРОЧКА, поэтому путаницы не будет
+            val = tokens_.pop(0)[1:-1]
+            return {
+                "type": "literal",
+                "value": val,
+                "value_type": "string"
+            }
+
+        if tokens_[0].startswith("'") and tokens_[0].endswith("'") and len(tokens_[0]) >= 3:
+            char_token = tokens_.pop(0)
+            # поддержка спец. символов '\n' чтоб не хранились как 2 символа, а как 1
+            val = bytes(char_token[1:-1], "utf-8").decode("unicode_escape")
+            return {
+                "type": "literal",
+                "value": val,
+                "value_type": "char"
+            }
 
         # перед тем как объявить токен просто переменной, нужно проверить не функция ли это
         if is_function_call_start(tokens_):
