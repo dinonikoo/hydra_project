@@ -3,7 +3,9 @@
 #TODO: все сделать в один модуль?
 
 #TODO: заменять функции из структуры на функции из гидры
-#TODO: тернарный оператор
+#TODO: добавить Math.floorMod
+#TODO: добавить equal для строк
+
 
 
 def indent(text, level): # отступы
@@ -63,16 +65,37 @@ def format_value(value_ast):
         else:
             return f"Base.int32 {val}"
         #return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
+    elif value_ast["type"] == "method_call":
+        # рекурсивно собираем вызовы
+        caller = format_value(value_ast["caller"])
+        method = value_ast["method"]
+        args = [format_value(arg) for arg in value_ast["arguments"]]
+
+        method_map = {
+            "toUpperCase": "Strings.toUpper",
+            "toLowerCase": "Strings.toLower",
+            "isEmpty": "Strings.isEmpty",
+            "length": "Strings.length",
+        }
+
+        if method in method_map:
+            mapped = method_map[method]
+            args_str = ", ".join(args)
+            if args:
+                return f"{mapped}({caller}, {args_str})"
+            else:
+                return f"{mapped}({caller})"
+        else:
+            return f"-- unsupported method: {method}"
+
+
+    #т.к. функция статическая, её не могут вызывать в цепочке
     elif value_ast["type"] == "function_call":
         function_map = {
-            "Character.isLowerCase": "Chars.isLower",
-            "Character.isUpperCase": "Chars.isUpper",
-            "Character.toUpperCase": "Chars.toUpper",
-            "Character.toLowerCase": "Chars.toLower",
-            "isEmptyString": "Strings.isEmpty",
-            "lengthString": "Strings.length",
-            "toLowerCaseString": "Strings.toLower",
-            "toUpperCaseString": "Strings.toUpper",
+            "CharisLowerCase": "Chars.isLower",
+            "CharisUpperCase": "Chars.isUpper",
+            "ChartoUpperCase": "Chars.toUpper",
+            "ChartoLowerCase": "Chars.toLower",
         }
         func = value_ast["name"]
         args = [format_value(arg) for arg in value_ast["arguments"]]
@@ -82,8 +105,10 @@ def format_value(value_ast):
             return f"Base.list [{', '.join(args)}]"
         elif func in function_map:
             return f"{mapped_func}({args[0]})" if len(args) == 1 else f"{mapped_func}({')('.join(args)})"
+        #else:
+           # return f"{func}({', '.join(args)})"
         else:
-            return f"{func}({', '.join(args)})"
+            return f"-- unsupported func"
 
     elif value_ast["type"] == "binary":
         left = format_value(value_ast["left"])
@@ -116,6 +141,12 @@ def format_value(value_ast):
         if op == "-":
             return f"Math.neg ({operand})"
         return f"({op}{operand})"
+
+    elif value_ast["type"] == "ternary":
+        cond = format_value(value_ast["condition"])
+        then_expr = format_value(value_ast["then"])
+        else_expr = format_value(value_ast["else"])
+        return f"Logic.ifElse({cond}) ({then_expr}) ({else_expr})"
 
     return "-- unsupported expression"
 

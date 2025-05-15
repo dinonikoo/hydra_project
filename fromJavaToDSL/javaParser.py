@@ -1,5 +1,6 @@
 #TODO: добавить Math.floorMod
 #TODO: наследование?
+#TODO: добавить equal для строк
 
 from pathlib import Path
 import re
@@ -161,18 +162,14 @@ def parse_code(code):
 
     return structures
 
-import re
-
 def tokenize_return(e):
     def method_replacer(m):
-        receiver = m.group(1)
-        method = m.group(2)
-        # character.метод() не трогаем
-        if receiver == 'Character':
-            return m.group(0)
-        return f'{method}String({receiver})'
-    # обрабатываем случаи типа переменная.toLowerCase(), "abc".isEmpty() и т.п.
-    e = re.sub(r'((?:".*?"|\w+))\.(toLowerCase|toUpperCase|isEmpty|length)', method_replacer, e)
+        method = m.group(1)
+        return f'Char{method}'
+
+    #заменим все функции Character.функция на Charфункция - чтобы не путать с функциями, которые вызываем через объект
+    e = re.sub(r'\bCharacter\.(toLowerCase|toUpperCase|isLowerCase|isUpperCase)', method_replacer, e)
+
     # Arrays.asList и java.util.Arrays.asList --> asList
     e = re.sub(r'\b(?:java\.util\.)?Arrays\.asList', 'asList', e)
     e = e.strip()
@@ -214,7 +211,7 @@ def parse_return(tokens):
     def parse_arithmetic(tokens_):
         return parse_additive(tokens_)
 
-    # РАЗНЫЙ УРОВЕНЬ ПРИОРИТЕТА
+    # РАЗНЫЙ УРОВЕНЬ ПРИОРИТЕТА, ПОЭТОМУ РАЗВЕЛИ additive и multiplicative
     def parse_additive(tokens_):
         left = parse_multiplicative(tokens_)
         while tokens_ and tokens_[0] in ['+', '-']:
@@ -240,54 +237,79 @@ def parse_return(tokens):
             operand = parse_unary(tokens_)
             return {"type": "unary", "operator": op, "operand": operand} # унарное: отрицание или минус
 
-        # скобки
+        #скобки
         if tokens_[0] == '(':
             tokens_.pop(0)
             expr = parse_ternary(tokens_)
-            if tokens_[0] == ')':
+            if tokens_ and tokens_[0] == ')':
                 tokens_.pop(0)
-            return expr
+            return parse_postfix_chain(expr, tokens_)
 
-        # число, сохраняется именно КАК ЧИСЛО
         if re.match(r'\d+', tokens_[0]):
-            return {"type": "literal", "value": int(tokens_.pop(0))}
+            expr = {"type": "literal", "value": int(tokens_.pop(0))}
+            return parse_postfix_chain(expr, tokens_)
 
         if tokens_[0].startswith('"') and tokens_[0].endswith('"'):
             val = tokens_.pop(0)[1:-1]
-            return {
-                "type": "literal",
-                "value": val,
-                "value_type": "string"
-            }
+            expr = {"type": "literal", "value": val, "value_type": "string"}
+            return parse_postfix_chain(expr, tokens_)
 
         if tokens_[0].startswith("'") and tokens_[0].endswith("'") and len(tokens_[0]) >= 3:
             char_token = tokens_.pop(0)
-            # поддержка спец. символов '\n' чтоб не хранились как 2 символа, а как 1
             val = bytes(char_token[1:-1], "utf-8").decode("unicode_escape")
-            return {
-                "type": "literal",
-                "value": val,
-                "value_type": "char"
-            }
+            expr = {"type": "literal",
+                    "value": val,
+                    "value_type": "char"}
+            return parse_postfix_chain(expr, tokens_)
 
-        # перед тем как объявить токен просто переменной, нужно проверить не функция ли это
+        # вызов функции?
         if is_function_call_start(tokens_):
-            return parse_function_call(tokens_)
+            expr = parse_function_call(tokens_)
+            return parse_postfix_chain(expr, tokens_)
 
-        # variable - переменная
         if re.match(r'[A-Za-z_]\w*', tokens_[0]):
-            return {"type": "variable", "name": tokens_.pop(0)}
+            expr = {"type": "variable",
+                    "name": tokens_.pop(0)}
+            return parse_postfix_chain(expr, tokens_)
+
+        return None
 
         #raise ValueError("Внимание: неизвестный токен ", tokens_[0])
 
+    # это нужно для поддержки вызовов-цепочек через точку. Такие методы будут method_call - в отличие function_call для символов
+    # т.к. Character.методы статические
+    def parse_postfix_chain(expr, tokens_):
+        while tokens_ and tokens_[0] == '.':
+            tokens_.pop(0)
+            if tokens_ and re.match(r'[A-Za-z_]\w*', tokens_[0]):
+                method_name = tokens_.pop(0)
+                if tokens_ and tokens_[0] == '(':
+                    tokens_.pop(0)  # убираем (
+                    args = []
+                    while tokens_ and tokens_[0] != ')':
+                        args.append(parse_ternary(tokens_))
+                        if tokens_ and tokens_[0] == ',':
+                            tokens_.pop(0)
+                    if tokens_ and tokens_[0] == ')':
+                        tokens_.pop(0)  # убираем )
+                    expr = {
+                        "type": "method_call",
+                        "caller": expr,
+                        "method": method_name,
+                        "arguments": args
+                    }
+                else:
+                    expr = {
+                        "type": "field_access",
+                        "caller": expr,
+                        "field": method_name
+                    }
+        return expr
+
     def is_function_call_start(tokens_):
-        # обработка например Character . isLowerCase (
-        if len(tokens_) >= 4 and re.match(r'[A-Za-z_]\w*', tokens_[0]) and tokens_[1] == '.' and re.match(r'[A-Za-z_]\w*',
-                                                                                                       tokens_[2]) and \
-                tokens_[3] == '(':
-            return True
-        # обработка например toLowerCase (
         if len(tokens_) >= 2 and re.match(r'[A-Za-z_]\w*', tokens_[0]) and tokens_[1] == '(':
+            return True
+        if len(tokens_) >= 4 and tokens_[1] == '.' and tokens_[3] == '(':
             return True
         return False
 
