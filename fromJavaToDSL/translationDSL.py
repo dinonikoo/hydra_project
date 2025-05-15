@@ -1,3 +1,10 @@
+#TODO: необходимо добавить импорты к финальному файлу
+
+#TODO: все сделать в один модуль?
+
+#TODO: некорректная обработка вложенных функций
+
+
 def indent(text, level): # отступы
     return "\n".join("  " * level + line for line in text.splitlines())
 
@@ -16,6 +23,31 @@ def hydra_type(java_type):
         return f"Types.list {inner}"
     else:
         return "Types.string"
+
+def hydra_type_TElement(java_type):
+    # при прохождении list в конце остается 'type': 'String', который явл. словарём
+    if isinstance(java_type, dict):
+        #print(java_type, isinstance(java_type, dict), java_type.get("type"))
+        if java_type.get("type") in ("Integer", "int", "integer"):
+            return "Int"
+        elif java_type.get("type") in ("Boolean", "boolean"):
+            return "Bool"
+        elif java_type.get("type") == "String":
+            return "String"
+
+    # перевод типов данных для функций (тип параметра и возвр. значения - если java_type обычная строчка)
+    if java_type in ("Integer", "int", "integer"):
+        return "Int"
+    elif java_type in ("Boolean", "boolean"):
+        return "Bool"
+    elif java_type == "String":
+        return "String"
+    elif isinstance(java_type, dict) and java_type.get("type") == "List":
+        inner = hydra_type_TElement(java_type["of"])
+        #print(inner, java_type["of"])
+        return f"[{inner}]"
+    else:
+        return "unknown"
 
 def format_value(value_ast):
     # обработка значений
@@ -59,31 +91,36 @@ def generate_class_module(module_name, classes):
 
 def generate_interface_module(module_name, iface):
     elements = []
+    blocks = []
     for el in iface["elements"]:
         if el["type"] == "const":
             field_type = hydra_type(el["field_type"])
+            field_type_TElement = hydra_type_TElement(el["field_type"])
             name = el["name"]
+
             if "value_ast" in el:
                 val_expr = format_value(el["value_ast"])
             else:
-                val_expr = f'Base.{field_type.split(".")[-1]} {el["value"]}'
-            block = f'''{name}Def :: TElement {field_type.split(".")[-1]}
+                val_expr = f'Base.{field_type.split(".")[-1]} {format_value(el["value"])}'
+            block = f'''{name}Def :: TElement {field_type_TElement}
 {name}Def = definitionInModule {module_name}Module "{name}" $
   {val_expr}'''
         elif el["type"] == "function":
-            arg_type = hydra_type(el["parameter_type"])
-            ret_type = hydra_type(el["return_type"])
+            arg_type = hydra_type_TElement(el["parameter_type"])
+            ret_type = hydra_type_TElement(el["return_type"])
             body = f'Strings.length (Base.string "{el["return_statement"]["value"]}")'
-            block = f'''{el["name"]}Def :: TElement ({arg_type.split(".")[-1]} -> {ret_type.split(".")[-1]})
+            block = f'''{el["name"]}Def :: TElement ({arg_type} -> {ret_type})
 {el["name"]}Def = definitionInModule {module_name}Module "{el["name"]}" $
   Base.lambda "{el["parameter_name"]}" $
     {body}'''
         else:
             continue
         elements.append(f'el {el["name"]}Def')
+        blocks.append(block)
 
     elements_block = ",\n".join(elements)
     elements_block_ = indent(elements_block, 1)
+    blocks_code = "\n\n".join(blocks)
 
     header = f'''{module_name}Module :: Module
 {module_name}Module = Module ns elements [hydraCoreModule] [hydraCoreModule] $
@@ -98,7 +135,7 @@ def generate_interface_module(module_name, iface):
 {indent(elements_block_, 2)}
       ] 
     
-{block}
+{blocks_code}
 '''
     return header
 

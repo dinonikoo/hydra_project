@@ -1,5 +1,15 @@
+#TODO: добавить Math.floorMod
+
+#TODO: исправить ошибки парсинга некоторых функций через точку
+
+#TODO: при присваивании переменной значения 1 + 1 + 1 неверно парсится выражение. Возможно стоит проверить строку на наличие
+# операторов/функций, чтобы корректно парсить
+
+#TODO: наследование?
+
 from pathlib import Path
 import re
+import json
 
 TOKEN_REGEX = re.compile(r'''
     "(?:.\\|[^"])*"        |  # строковые литералы
@@ -124,7 +134,9 @@ def parse_code(code):
         elif line.endswith(";"):
             if "=" in line:
                 decl, value = line.split("=", 1)
-                value = value.strip().strip(";").strip('"')
+                value = value.strip().strip(";")
+                tokens_ = tokenize_return(value)
+                ast_ = parse_return(tokens_)
                 parts = decl.strip().split()
                 if len(parts) >= 2:
                     type_ = parts[-2]
@@ -133,7 +145,7 @@ def parse_code(code):
                         "type": "const",
                         "name": name,
                         "field_type": type_,
-                        "value": value
+                        "value": ast_
                     })
             else:
                 parts = line.strip().strip(";").split()
@@ -154,19 +166,23 @@ def parse_code(code):
 
     return structures
 
+import re
+
 def tokenize_return(e):
-    e = re.sub(r'([A-Za-z_]\w*)\.(toLowerCase|toUpperCase|isEmpty|length)',
-                  lambda m: m.group(0) if m.group(1) == 'Character' else f'{m.group(2)}String({m.group(1)})', e)
-    #TODO: isEmpty некорректно парсится, проверить, нормально ли работают функции, вызывающ. через точку
-    
-    # у строчек и символов есть ряд функций с одинаковыми названиями, но они по разному называются.
-    # чтобы потом не было путаницы, я аргумент ВСЕГДА пишу в скобочках и помечаю функцию String, если она для строчек
-    # эта штука как раз все приводит в единый вид
+    def method_replacer(m):
+        receiver = m.group(1)
+        method = m.group(2)
+        # character.метод() не трогаем
+        if receiver == 'Character':
+            return m.group(0)
+        return f'{method}String({receiver})'
+    # обрабатываем случаи типа переменная.toLowerCase(), "abc".isEmpty() и т.п.
+    e = re.sub(r'((?:".*?"|\w+))\.(toLowerCase|toUpperCase|isEmpty|length)', method_replacer, e)
+    # Arrays.asList и java.util.Arrays.asList --> asList
     e = re.sub(r'\b(?:java\.util\.)?Arrays\.asList', 'asList', e)
-    # чтобы java.util.Arrays.asList и Arrays.asList не разбивался на токены
     e = e.strip()
     tokens = TOKEN_REGEX.findall(e)
-    #print(tokens, "токены")
+
     return tokens
 
 def parse_return(tokens):
@@ -201,8 +217,20 @@ def parse_return(tokens):
 
     # арифметические операторы
     def parse_arithmetic(tokens_):
+        return parse_additive(tokens_)
+
+    # РАЗНЫЙ УРОВЕНЬ ПРИОРИТЕТА
+    def parse_additive(tokens_):
+        left = parse_multiplicative(tokens_)
+        while tokens_ and tokens_[0] in ['+', '-']:
+            op = tokens_.pop(0)
+            right = parse_multiplicative(tokens_)
+            left = {"type": "binary", "operator": op, "left": left, "right": right}
+        return left
+
+    def parse_multiplicative(tokens_):
         left = parse_unary(tokens_)
-        while len(tokens_) > 0 and tokens_[0] in ['+', '-', '*', '/', '%']:
+        while tokens_ and tokens_[0] in ['*', '/', '%']:
             op = tokens_.pop(0)
             right = parse_unary(tokens_)
             left = {"type": "binary", "operator": op, "left": left, "right": right}
@@ -286,6 +314,6 @@ def parse(directory):
         with open(file, 'r') as c:
             code = c.read()
             structures = parse_code(code)
-            #print(structures)
+            print(structures)
             result.append(structures)
     return result
