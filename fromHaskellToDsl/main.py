@@ -306,16 +306,12 @@ module Hydra.Sources.{file_name} where
   where
     {elements_block}
 """
-
-
-# ======== I/O =========
-if __name__ == "__main__":
-    INPUT_PATH = "C:/2 курс/курсовая/test1.hs"
-    OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs"
-    FILE_NAME = "MyMath"
+def convertFileAPIHaskell(path_to_file_dir):
+    INPUT_PATH = f"{path_to_file_dir}/initialFile.hs"
+    FILE_NAME = "initialFile"
     SAVED_NAME = "hydra.test"
     MODULE_NAME = "myModuleTest"
-
+    
     try:
         with open(INPUT_PATH, "r", encoding="utf-8") as f:
             haskell_code = f.read()
@@ -327,13 +323,39 @@ if __name__ == "__main__":
             module_name=MODULE_NAME,
         )
 
-        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-            f.write(hydra_code)
+        print(f"✅ DSL-модуль записан в: {path_to_file_dir}")
 
-        print(f"✅ DSL-модуль записан в: {OUTPUT_PATH}")
+        return hydra_code
     except Exception as e:
         print(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
-        exit(1)
+        return False
+
+# ======== I/O =========
+# if __name__ == "__main__":
+#     INPUT_PATH = "C:/2 курс/курсовая/test1.hs"
+#     OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs"
+#     FILE_NAME = "MyMath"
+#     SAVED_NAME = "hydra.test"
+#     MODULE_NAME = "myModuleTest"
+
+#     try:
+#         with open(INPUT_PATH, "r", encoding="utf-8") as f:
+#             haskell_code = f.read()
+
+#         hydra_code = process_haskell_to_hydra(
+#             haskell_code,
+#             file_name=FILE_NAME,
+#             save_name=SAVED_NAME,
+#             module_name=MODULE_NAME,
+#         )
+
+#         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+#             f.write(hydra_code)
+
+#         print(f"✅ DSL-модуль записан в: {OUTPUT_PATH}")
+#     except Exception as e:
+#         print(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
+#         exit(1)
 
 
 """
