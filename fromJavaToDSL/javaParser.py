@@ -1,6 +1,6 @@
-#TODO: добавить Math.floorMod
 #TODO: наследование?
-#TODO: добавить equal для строк
+#TODO: сделать замену на  Static через одну регулярку + возможно объединить логику function_call и method_call
+#TODO: проверить работу floorMod
 
 from pathlib import Path
 import re
@@ -165,10 +165,11 @@ def parse_code(code):
 def tokenize_return(e):
     def method_replacer(m):
         method = m.group(1)
-        return f'Char{method}'
+        return f'Static{method}'
 
     #заменим все функции Character.функция на Charфункция - чтобы не путать с функциями, которые вызываем через объект
     e = re.sub(r'\bCharacter\.(toLowerCase|toUpperCase|isLowerCase|isUpperCase)', method_replacer, e)
+    e = re.sub(r'\bMath\.(floorMod)', method_replacer, e)
 
     # Arrays.asList и java.util.Arrays.asList --> asList
     e = re.sub(r'\b(?:java\.util\.)?Arrays\.asList', 'asList', e)

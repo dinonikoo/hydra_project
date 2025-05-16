@@ -1,10 +1,6 @@
 #TODO: необходимо добавить импорты к финальному файлу
-
 #TODO: все сделать в один модуль?
-
-#TODO: заменять функции из структуры на функции из гидры
-#TODO: добавить Math.floorMod
-#TODO: добавить equal для строк
+#TODO: генератор для наследования
 
 
 
@@ -76,6 +72,7 @@ def format_value(value_ast):
             "toLowerCase": "Strings.toLower",
             "isEmpty": "Strings.isEmpty",
             "length": "Strings.length",
+            "equals": "Equality.equalString"
         }
 
         if method in method_map:
@@ -92,10 +89,11 @@ def format_value(value_ast):
     #т.к. функция статическая, её не могут вызывать в цепочке
     elif value_ast["type"] == "function_call":
         function_map = {
-            "CharisLowerCase": "Chars.isLower",
-            "CharisUpperCase": "Chars.isUpper",
-            "ChartoUpperCase": "Chars.toUpper",
-            "ChartoLowerCase": "Chars.toLower",
+            "StaticisLowerCase": "Chars.isLower",
+            "StaticisUpperCase": "Chars.isUpper",
+            "StatictoUpperCase": "Chars.toUpper",
+            "StatictoLowerCase": "Chars.toLower",
+            "StaticfloorMod": "Math.mod"
         }
         func = value_ast["name"]
         args = [format_value(arg) for arg in value_ast["arguments"]]
