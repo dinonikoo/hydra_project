@@ -1,3 +1,13 @@
+#TODO: необходимо добавить импорты к финальному файлу
+
+#TODO: все сделать в один модуль?
+
+#TODO: заменять функции из структуры на функции из гидры
+#TODO: добавить Math.floorMod
+#TODO: добавить equal для строк
+
+
+
 def indent(text, level): # отступы
     return "\n".join("  " * level + line for line in text.splitlines())
 
@@ -5,6 +15,8 @@ def hydra_type(java_type):
     # перевод типов данных для полей класса
     if java_type in ("Integer", "int", "integer"):
         return "Types.int32"
+    elif java_type in ("Short", "short"):
+        return "Types.int16"
     elif java_type in ("Long", "long"):
         return "Types.int64"
     elif java_type in ("Boolean", "boolean"):
@@ -17,18 +29,127 @@ def hydra_type(java_type):
     else:
         return "Types.string"
 
+def hydra_type_TElement(java_type):
+    # при прохождении list в конце остается 'type': 'String', который явл. словарём
+    if isinstance(java_type, dict):
+        #print(java_type, isinstance(java_type, dict), java_type.get("type"))
+        if java_type.get("type") in ("Integer", "int", "integer"):
+            return "Int"
+        elif java_type.get("type") in ("Boolean", "boolean"):
+            return "Bool"
+        elif java_type.get("type") == "String":
+            return "String"
+
+    # перевод типов данных для функций (тип параметра и возвр. значения - если java_type обычная строчка)
+    if java_type in ("Integer", "int", "integer"):
+        return "Int"
+    elif java_type in ("Boolean", "boolean"):
+        return "Bool"
+    elif java_type == "String":
+        return "String"
+    elif isinstance(java_type, dict) and java_type.get("type") == "List":
+        inner = hydra_type_TElement(java_type["of"])
+        #print(inner, java_type["of"])
+        return f"[{inner}]"
+    else:
+        return "unknown"
+
 def format_value(value_ast):
-    # обработка значений
     if value_ast["type"] == "literal":
         val = value_ast["value"]
-        return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
+        if "value_type" in value_ast:
+            if value_ast["value_type"] == "string":
+                return f'Base.string "{val}"'
+            else:
+                return f"Base.int32 {ord(val)}"
+        else:
+            return f"Base.int32 {val}"
+        #return f'Base.string "{val}"' if isinstance(val, str) else f"Base.int32 {val}"
+    elif value_ast["type"] == "method_call":
+        # рекурсивно собираем вызовы
+        caller = format_value(value_ast["caller"])
+        method = value_ast["method"]
+        args = [format_value(arg) for arg in value_ast["arguments"]]
+
+        method_map = {
+            "toUpperCase": "Strings.toUpper",
+            "toLowerCase": "Strings.toLower",
+            "isEmpty": "Strings.isEmpty",
+            "length": "Strings.length",
+        }
+
+        if method in method_map:
+            mapped = method_map[method]
+            args_str = ", ".join(args)
+            if args:
+                return f"{mapped}({caller}, {args_str})"
+            else:
+                return f"{mapped}({caller})"
+        else:
+            return f"-- unsupported method: {method}"
+
+
+    #т.к. функция статическая, её не могут вызывать в цепочке
     elif value_ast["type"] == "function_call":
+        function_map = {
+            "CharisLowerCase": "Chars.isLower",
+            "CharisUpperCase": "Chars.isUpper",
+            "ChartoUpperCase": "Chars.toUpper",
+            "ChartoLowerCase": "Chars.toLower",
+        }
         func = value_ast["name"]
-        args = ", ".join(format_value(arg) for arg in value_ast["arguments"])
+        args = [format_value(arg) for arg in value_ast["arguments"]]
+        mapped_func = function_map.get(func, func)
+
         if func == "asList":
-            return f"Base.list [{args}]"
-        # TODO: добавить остальное
+            return f"Base.list [{', '.join(args)}]"
+        elif func in function_map:
+            return f"{mapped_func}({args[0]})" if len(args) == 1 else f"{mapped_func}({')('.join(args)})"
+        #else:
+           # return f"{func}({', '.join(args)})"
+        else:
+            return f"-- unsupported func"
+
+    elif value_ast["type"] == "binary":
+        left = format_value(value_ast["left"])
+        right = format_value(value_ast["right"])
+        op = value_ast["operator"]
+        op_map = {
+            "+": "Math.add",
+            "-": "Math.sub",
+            "*": "Math.mul",
+            "/": "Math.div",
+            "%": "Math.rem",
+            "==": "Equality.equalInt32",
+            ">": "Equality.gtInt32",
+            ">=": "Equality.gteInt32",
+            "<": "Equality.ltInt32",
+            "<=": "Equality.lteInt32"
+        }
+        if op in op_map:
+            return f'{op_map[op]} ({left}) ({right})'
+        else:
+            return f"({left} {op} {right})"
+
+    elif value_ast["type"] == "variable":
+        return f'Base.var "{value_ast["name"]}"'
+
+    elif value_ast["type"] == "unary":
+        operand = format_value(value_ast["operand"])
+        op = value_ast["operator"]
+
+        if op == "-":
+            return f"Math.neg ({operand})"
+        return f"({op}{operand})"
+
+    elif value_ast["type"] == "ternary":
+        cond = format_value(value_ast["condition"])
+        then_expr = format_value(value_ast["then"])
+        else_expr = format_value(value_ast["else"])
+        return f"Logic.ifElse({cond}) ({then_expr}) ({else_expr})"
+
     return "-- unsupported expression"
+
 
 def generate_class_module(module_name, classes):
     elements = []
@@ -59,31 +180,42 @@ def generate_class_module(module_name, classes):
 
 def generate_interface_module(module_name, iface):
     elements = []
+    blocks = []
     for el in iface["elements"]:
         if el["type"] == "const":
             field_type = hydra_type(el["field_type"])
+            field_type_TElement = hydra_type_TElement(el["field_type"])
             name = el["name"]
+            #print("ОБРАБОТКА ПОЛЯ ", name)
+            #print(el)
             if "value_ast" in el:
                 val_expr = format_value(el["value_ast"])
-            else:
-                val_expr = f'Base.{field_type.split(".")[-1]} {el["value"]}'
-            block = f'''{name}Def :: TElement {field_type.split(".")[-1]}
+                #print("TRUE", el["value_ast"])
+                # пишем Base.тип, если возвращается простое значение
+                if el["value_ast"]["type"] == "literal":
+                    val_expr = f'Base.{field_type.split(".")[-1]} {val_expr}'
+            else: # если в составе есть функции, возвращается TTerm и Base.тип не нужно
+                val_expr = f'{format_value(el["value"])}'
+
+            block = f'''{name}Def :: TElement {field_type_TElement}
 {name}Def = definitionInModule {module_name}Module "{name}" $
   {val_expr}'''
         elif el["type"] == "function":
-            arg_type = hydra_type(el["parameter_type"])
-            ret_type = hydra_type(el["return_type"])
-            body = f'Strings.length (Base.string "{el["return_statement"]["value"]}")'
-            block = f'''{el["name"]}Def :: TElement ({arg_type.split(".")[-1]} -> {ret_type.split(".")[-1]})
+            arg_type = hydra_type_TElement(el["parameter_type"])
+            ret_type = hydra_type_TElement(el["return_type"])
+            body = format_value(el["return_statement"])
+            block = f'''{el["name"]}Def :: TElement ({arg_type} -> {ret_type})
 {el["name"]}Def = definitionInModule {module_name}Module "{el["name"]}" $
   Base.lambda "{el["parameter_name"]}" $
     {body}'''
         else:
             continue
         elements.append(f'el {el["name"]}Def')
+        blocks.append(block)
 
     elements_block = ",\n".join(elements)
     elements_block_ = indent(elements_block, 1)
+    blocks_code = "\n\n".join(blocks)
 
     header = f'''{module_name}Module :: Module
 {module_name}Module = Module ns elements [hydraCoreModule] [hydraCoreModule] $
@@ -98,7 +230,7 @@ def generate_interface_module(module_name, iface):
 {indent(elements_block_, 2)}
       ] 
     
-{block}
+{blocks_code}
 '''
     return header
 
