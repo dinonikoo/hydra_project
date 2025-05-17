@@ -1,4 +1,4 @@
-#TODO: сделать замену на  Static через одну регулярку + возможно объединить логику function_call и method_call
+#TODO: сделать замену на  Static через одну регулярку
 
 from pathlib import Path
 import re
@@ -345,6 +345,6 @@ def parse(directory):
         with open(file, 'r') as c:
             code = c.read()
             structures = parse_code(code)
-            print(structures)
+            #print(structures)
             result.append(structures)
     return result
