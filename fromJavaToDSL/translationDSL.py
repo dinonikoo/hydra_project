@@ -1,21 +1,18 @@
 #TODO: необходимо добавить импорты к финальному файлу
-#TODO: все сделать в один модуль?
-#TODO: генератор для наследования
-
-
+#TODO: проверки типов?
 
 def indent(text, level): # отступы
     return "\n".join("  " * level + line for line in text.splitlines())
 
 def hydra_type(java_type):
     # перевод типов данных для полей класса
-    if java_type in ("Integer", "int", "integer"):
+    if java_type in ("int", "Integer"):
         return "Types.int32"
-    elif java_type in ("Short", "short"):
+    elif java_type in ("short", "Short"):
         return "Types.int16"
-    elif java_type in ("Long", "long"):
+    elif java_type in ("long", "Long"):
         return "Types.int64"
-    elif java_type in ("Boolean", "boolean"):
+    elif java_type in ("boolean", "Boolean"):
         return "Types.boolean"
     elif java_type == "String":
         return "Types.string"
@@ -23,7 +20,7 @@ def hydra_type(java_type):
         inner = hydra_type(java_type["of"])
         return f"Types.list {inner}"
     else:
-        return "Types.string"
+        return f"-- unsupported type: {java_type}"
 
 def hydra_type_TElement(java_type):
     # при прохождении list в конце остается 'type': 'String', который явл. словарём
@@ -35,6 +32,9 @@ def hydra_type_TElement(java_type):
             return "Bool"
         elif java_type.get("type") == "String":
             return "String"
+        else:
+            _ = java_type.get("type")
+            return f"-- unsupported type: {_}"
 
     # перевод типов данных для функций (тип параметра и возвр. значения - если java_type обычная строчка)
     if java_type in ("Integer", "int", "integer"):
@@ -48,7 +48,7 @@ def hydra_type_TElement(java_type):
         #print(inner, java_type["of"])
         return f"[{inner}]"
     else:
-        return "unknown"
+        return f"-- unsupported type: {java_type}"
 
 def format_value(value_ast):
     if value_ast["type"] == "literal":
@@ -68,17 +68,21 @@ def format_value(value_ast):
         args = [format_value(arg) for arg in value_ast["arguments"]]
 
         method_map = {
-            "toUpperCase": "Strings.toUpper",
-            "toLowerCase": "Strings.toLower",
-            "isEmpty": "Strings.isEmpty",
-            "length": "Strings.length",
-            "equals": "Equality.equalString"
+            "toUpperCase": {"name": "Strings.toUpper", "args_count": 0},
+            "toLowerCase": {"name": "Strings.toLower", "args_count": 0},
+            "isEmpty": {"name": "Strings.isEmpty", "args_count": 0},
+            "length": {"name": "Strings.length", "args_count": 0},
+            "equals": {"name": "Equality.equalString", "args_count": 1}
         }
 
+
         if method in method_map:
-            mapped = method_map[method]
+            mapped = method_map[method]["name"]
             args_str = ", ".join(args)
             if args:
+                if len(args) != method_map[method]["args_count"]:
+                    name = method_map[method]["name"]
+                    raise ValueError(f"Неверное кол-во аргументов {name}, {len(args)}")
                 return f"{mapped}({caller}, {args_str})"
             else:
                 return f"{mapped}({caller})"
@@ -89,24 +93,32 @@ def format_value(value_ast):
     #т.к. функция статическая, её не могут вызывать в цепочке
     elif value_ast["type"] == "function_call":
         function_map = {
-            "StaticisLowerCase": "Chars.isLower",
-            "StaticisUpperCase": "Chars.isUpper",
-            "StatictoUpperCase": "Chars.toUpper",
-            "StatictoLowerCase": "Chars.toLower",
-            "StaticfloorMod": "Math.mod"
+            "StaticisLowerCase": {"name": "Chars.isLower", "args_count": 1},
+            "StaticisUpperCase": {"name": "Chars.isUpper", "args_count": 1},
+            "StatictoUpperCase": {"name": "Chars.toUpper", "args_count": 1},
+            "StatictoLowerCase": {"name": "Chars.toLower", "args_count": 1},
+            "StaticfloorMod": {"name": "Math.mod", "args_count": 2}
         }
         func = value_ast["name"]
         args = [format_value(arg) for arg in value_ast["arguments"]]
         mapped_func = function_map.get(func, func)
+        #print(mapped_func)
+        #print(type(mapped_func))
+        if isinstance(mapped_func, dict):
+            mapped_func = mapped_func.get("name", func)
 
         if func == "asList":
             return f"Base.list [{', '.join(args)}]"
         elif func in function_map:
+            if args:
+                if len(args) != function_map[func]["args_count"]:
+                    name = function_map[func]["name"]
+                    raise ValueError(f"Неверное кол-во аргументов {name}, {len(args)}")
             return f"{mapped_func}({args[0]})" if len(args) == 1 else f"{mapped_func}({')('.join(args)})"
         #else:
            # return f"{func}({', '.join(args)})"
         else:
-            return f"-- unsupported func"
+            return f"-- unsupported func: {func}"
 
     elif value_ast["type"] == "binary":
         left = format_value(value_ast["left"])
@@ -232,7 +244,91 @@ def generate_interface_module(module_name, iface):
 '''
     return header
 
+def generate_my_module(data):
+    module_name = "myModule"
+    namespace = None
+    elements = []
+    blocks = []
+
+    for unit in data:
+        for item in unit:
+            if item["type"] == "interface" and not namespace:
+                namespace = item["name"].lower()
+
+    if not namespace:
+        namespace = "default"
+
+    ns_line = f'Namespace "hydra.{namespace}"'
+
+    for unit in data:
+        for item in unit:
+            if item["type"] == "class":
+                for cls in [item]:
+                    fields = []
+                    for f in cls["elements"]:
+                        field_type = hydra_type(f["field_type"])
+                        fields.append(f'  "{f["name"]}" Types.>: {field_type}')
+                    fields_block = indent(",\n".join(fields), 3)
+                    el = f'  def "{cls["name"]}" $ \n      A.doc "This type generated from Java" $ \n      Types.record [\n{fields_block}\n  ]'
+                    elements.append(el)
+
+            elif item["type"] == "interface":
+                for el in item["elements"]:
+                    if el["type"] == "const":
+                        field_type = hydra_type(el["field_type"])
+                        field_type_TElement = hydra_type_TElement(el["field_type"])
+                        name = el["name"]
+
+                        if "value_ast" in el:
+                            val_expr = format_value(el["value_ast"])
+                            if el["value_ast"]["type"] == "literal":
+                                val_expr = f'Base.{field_type.split(".")[-1]} {val_expr}'
+                        else:
+                            val_expr = f'{format_value(el["value"])}'
+
+                        block = f'''{name}Def :: TElement {field_type_TElement}
+{name}Def = definitionInModule {module_name} "{name}" $
+  {val_expr}'''
+
+                    elif el["type"] == "function":
+                        arg_type = hydra_type_TElement(el["parameter_type"])
+                        ret_type = hydra_type_TElement(el["return_type"])
+                        body = format_value(el["return_statement"])
+                        block = f'''{el["name"]}Def :: TElement ({arg_type} -> {ret_type})
+{el["name"]}Def = definitionInModule {module_name} "{el["name"]}" $
+  Base.lambda "{el["parameter_name"]}" $
+    {body}'''
+
+                    else:
+                        continue
+
+                    elements.append(f'el {el["name"]}Def')
+                    blocks.append(block)
+
+    elements_block = indent(",\n".join(elements), 2)
+    blocks_code = "\n\n".join(blocks)
+
+    return f'''{module_name} :: Module
+{module_name} = Module ns elements [hydraCoreModule] [hydraCoreModule] $
+    Just "{module_name} generated code"
+  where
+    ns = {ns_line}
+    def = datatype ns
+    core = typeref $ moduleNamespace hydraCoreModule
+    testing = typeref ns
+
+    elements = [
+{elements_block}
+    ]
+
+{blocks_code}
+'''
+
 def generate(data):
+    return generate_my_module(data)
+
+
+def generate_(data):
     #print(data)
     output = []
     for unit in data:

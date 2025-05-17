@@ -1,6 +1,4 @@
-#TODO: наследование?
 #TODO: сделать замену на  Static через одну регулярку + возможно объединить логику function_call и method_call
-#TODO: проверить работу floorMod
 
 from pathlib import Path
 import re
