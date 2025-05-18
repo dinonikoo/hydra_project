@@ -2,8 +2,8 @@ import ast
 
 # === DSL Mappings ===
 dsl_map = {
-    'len':   ('Strings.length',     'String -> Int'),
-    'len':   ('Lists.length',          '[Int] -> Int'),
+    'list':  ('Strings.toList',     'String -> [Int]'),
+    'len':   ('String.length',      'String -> Int'),
     'upper': ('Strings.toUpper',    'String -> String'),
     'lower': ('Strings.toLower',    'String -> String'),
 }
@@ -17,7 +17,6 @@ bin_op_map = {
 }
 
 compare_map = {
-    ast.Eq: ('Equality.equalInt32', 'Int -> Int -> Bool'),
     ast.Lt: ('Equality.ltInt32',    'Int -> Int -> Bool'),
     ast.LtE: ('Equality.lteInt32',    'Int -> Int -> Bool'),
     ast.Gt: ('Equality.gtInt32',    'Int -> Int -> Bool'),
@@ -69,17 +68,17 @@ def to_haskell_expr(node):
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Attribute):
             obj = to_haskell_expr(node.func.value)
-            func = dsl_map.get(node.func.attr, ('-- unknown function', ))[0]
+            func = dsl_map.get(node.func.attr, ('-- unsupported function', ))[0]
             return f"{func} ({obj})"
         elif isinstance(node.func, ast.Name):
-            func = dsl_map.get(node.func.id, ('-- unknown function', ))[0]
             arg = to_haskell_expr(node.args[0])
+            func = dsl_map.get(node.func.id, ('-- unsupported function', ))[0]
             return f"{func} ({arg})"
 
     if isinstance(node, ast.BinOp):
         left = to_haskell_expr(node.left)
         right = to_haskell_expr(node.right)
-        op = bin_op_map.get(type(node.op), ('-- unknown operation', ))[0]
+        op = bin_op_map.get(type(node.op), ('-- unsupported operation', ))[0]
         return f"{op} ({left}) ({right})"
 
     if isinstance(node, ast.Compare):
@@ -126,6 +125,20 @@ def to_haskell_expr(node):
     if isinstance(node, ast.List):
         return f"Base.list [{', '.join(to_haskell_expr(elt) for elt in node.elts)}]"
 
+    if isinstance(node, ast.Subscript):
+        target = to_haskell_expr(node.value)
+        index_node = node.slice
+        index = None
+        if isinstance(index_node, ast.Constant):  # arr[0], arr[-1]
+            index = index_node.value
+        elif isinstance(index_node, ast.UnaryOp) and isinstance(index_node.op, ast.USub) and isinstance(index_node.operand, ast.Constant):
+            index = -index_node.operand.value
+        if index == 0:
+            return f"Lists.head ({target})"
+        elif index == -1:
+            return f"Lists.last ({target})"
+        else:
+            return "-- unsupported subscript"
     return "-- unknown"
 
 def annotate_parents(tree):
@@ -144,6 +157,8 @@ def infer_arg_type(arg_name, func_body):
                 return 'Int'
             if isinstance(context, ast.Call):
                 return infer_sig(context.args[0])
+            if isinstance(context, ast.Subscript):
+                return '[Int]'
     return
 
 
@@ -183,16 +198,11 @@ def to_haskell_variable(name, node):
     parts = [t.strip() for t in sig.split('->')]
     if len(parts) == 2:
         arg_t, ret_t = parts
-    else:
-        arg_t, ret_t = parts[0], parts[-1]
-
+    else: arg_t, ret_t = parts[0], parts[-1]
     if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Name):
         arg_name = node.args[0].id
-    else:
-        arg_name = name
-
+    else: arg_name = name
     body = to_haskell_expr(node)
-
     if len(parts) == 2:
         return (f"{name}Def :: TElement ({arg_t} -> {ret_t})\n"
                 f"{name}Def = definitionInModule generatedModule \"{name}\" $\n"
@@ -253,7 +263,7 @@ generatedModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just
 
     return header + '\n'.join(var + funcs)
 
-# === Пример ===
+# === Example ===
 python_code = '''
 class Person:
     name = "Daria"
@@ -262,16 +272,18 @@ class Person:
 x = 890    
 
 arr = [4, 5, 6]
-s = sum(arr)
+def func1(arr):
+    return arr[0] == arr[-1]
 
 str1 = "Wonderful"
 str2 = upper(str1)
 eq = "awesome" == "awful"
+dlina = len(str1)
 
 def isEven(y):
     return True if y % 2 == 0 else False
 
-def func(x):
+def func2(x):
     return (x >= 10) and (x < 100)
 
 '''
