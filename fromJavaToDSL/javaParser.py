@@ -1,5 +1,6 @@
 #TODO: вывод ошибок в файл
 import re
+from pathlib import Path
 
 TOKEN_REGEX = re.compile(r'''
     '(?:\\.|[^'])'         |  # символьные литералы  - чтобы не путать 'A' и A, где 'A' char, A - переменная
