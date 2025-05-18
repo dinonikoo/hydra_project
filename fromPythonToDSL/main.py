@@ -3,7 +3,7 @@ import ast
 # === DSL Mappings ===
 dsl_map = {
     'list':  ('Strings.toList',     'String -> [Int]'),
-    'len':   ('String.length',      'String -> Int'),
+    'len':   ('Strings.length',     'String -> Int'),
     'upper': ('Strings.toUpper',    'String -> String'),
     'lower': ('Strings.toLower',    'String -> String'),
 }
@@ -273,12 +273,13 @@ x = 890
 
 arr = [4, 5, 6]
 def func1(arr):
-    return arr[0] == arr[-1]
+    return not (arr[0] == arr[-1])
+new = list("27394")
 
 str1 = "Wonderful"
 str2 = upper(str1)
 eq = "awesome" == "awful"
-dlina = len(str1)
+dlina = len("Brilliant")
 
 def isEven(y):
     return True if y % 2 == 0 else False
