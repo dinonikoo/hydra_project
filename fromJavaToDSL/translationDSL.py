@@ -1,8 +1,7 @@
 #TODO: вывод ошибок в файл
-
 imports = '''{-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.PersonType where
+module Hydra.Sources.MyModule where
 
 import           Hydra.Dsl.Annotations as A
 import           Hydra.Dsl.Bootstrap
@@ -95,13 +94,16 @@ def infer_type(ast):
         value_type = ast.get("value_type")
         return "String" if value_type in ("string", "String") else "Int"
     elif ast["type"] == "variable":
-        return "Unknown"  # неизвестный тип переменной
+        return "Variable"  # неизвестный тип переменной
     elif ast["type"] == "binary":
         op = ast["operator"]
         if op in op_map:
             left_type = infer_type(ast["left"])
             right_type = infer_type(ast["right"])
-            if left_type == right_type:
+            # не проверяем типы с переменными
+            if left_type == "Variable" or right_type == "Variable":
+                return op_map[op]["return_type"]
+            elif left_type == right_type:
                 return op_map[op]["return_type"]
         else:
             return "-- unsupported binary operator"
@@ -154,6 +156,7 @@ def infer_type(ast):
 
 
 def format_value(value_ast):
+    #print("value_ast ", value_ast)
     if value_ast["type"] == "literal":
         val = value_ast["value"]
         if "value_type" in value_ast:
@@ -249,6 +252,7 @@ def format_value(value_ast):
 
 def generate_my_module(data):
     module_name = "myModule"
+
     namespace = None
     elements = []
     blocks = []
@@ -289,6 +293,8 @@ def generate_my_module(data):
                                 val_expr = f'Base.{field_type.split(".")[-1]} {val_expr}'
                         else:
                             val_expr = f'{format_value(el["value"])}'
+                            #print("DEBUG :", el)
+                            #print("value :", el["value"])
                             #print(val_expr)
                             real_type = infer_type(el["value"])
                             #print(real_type)
@@ -328,7 +334,7 @@ def generate_my_module(data):
                     elements.append(f'el {el["name"]}Def')
                     blocks.append(block)
 
-    elements_block = indent(",\n".join(elements), 2)
+    elements_block = indent(",\n".join(elements), 3)
     blocks_code = "\n\n".join(blocks)
 
     return f'''{imports}
@@ -343,7 +349,7 @@ def generate_my_module(data):
 
     elements = [
 {elements_block}
-    ]
+      ]
 
 {blocks_code}
 '''
