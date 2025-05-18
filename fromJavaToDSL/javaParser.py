@@ -1,6 +1,4 @@
-#TODO: сделать замену на  Static через одну регулярку
-
-from pathlib import Path
+#TODO: вывод ошибок в файл
 import re
 
 TOKEN_REGEX = re.compile(r'''
@@ -165,10 +163,9 @@ def tokenize_return(e):
         method = m.group(1)
         return f'Static{method}'
 
-    #заменим все функции Character.функция на Charфункция - чтобы не путать с функциями, которые вызываем через объект
-    e = re.sub(r'\bCharacter\.(toLowerCase|toUpperCase|isLowerCase|isUpperCase)', method_replacer, e)
-    e = re.sub(r'\bMath\.(floorMod)', method_replacer, e)
-
+    #заменим все функции Character.функция и Math.функция на Staticфункция - чтобы не путать с функциями, которые вызываем через объект
+    e = re.sub(
+        r'\b(?:Character|Math)\.(toLowerCase|toUpperCase|isLowerCase|isUpperCase|floorMod)', method_replacer, e)
     # Arrays.asList и java.util.Arrays.asList --> asList
     e = re.sub(r'\b(?:java\.util\.)?Arrays\.asList', 'asList', e)
     e = e.strip()
@@ -336,15 +333,10 @@ def parse_return(tokens):
 
     return parse_ternary(tokens)
 
-def parse(directory):
+def parse(filepath):
     result = []
-    java_list = list(Path(directory).rglob("*.java"))
-    if len(java_list) == 0:
-        print("Внимание: найдено 0 файлов *.java")
-    for file in java_list:
-        with open(file, 'r') as c:
-            code = c.read()
-            structures = parse_code(code)
-            #print(structures)
-            result.append(structures)
+    with open(filepath, 'r', encoding='utf-8') as f:
+        code = f.read()
+        structures = parse_code(code)
+        result.append(structures)
     return result

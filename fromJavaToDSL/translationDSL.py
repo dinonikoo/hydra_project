@@ -1,4 +1,4 @@
-#TODO: проверки типов? для пользовательских функций
+#TODO: вывод ошибок в файл
 
 imports = '''{-# LANGUAGE OverloadedStrings #-}
 
@@ -302,11 +302,21 @@ def generate_my_module(data):
 {name}Def = definitionInModule {module_name} "{name}" $
   {val_expr}'''
 
-
                     elif el["type"] == "function":
                         arg_type = hydra_type_TElement(el["parameter_type"])
                         ret_type = hydra_type_TElement(el["return_type"])
-                        body = format_value(el["return_statement"])
+
+                        body_ast = el["return_statement"]
+                        inferred_return_type = infer_type(body_ast)
+
+                        # чтобы тип возвращаемого значения (фактический) совпадал с сигнатурой
+                        if inferred_return_type != ret_type:
+                            raise TypeError(
+                                f'Тип результата функции "{el["name"]}" не совпадает: ожидается "{ret_type}", найдено "{inferred_return_type}"'
+                            )
+
+                        body = format_value(body_ast)
+
                         block = f'''{el["name"]}Def :: TElement ({arg_type} -> {ret_type})
 {el["name"]}Def = definitionInModule {module_name} "{el["name"]}" $
   Base.lambda "{el["parameter_name"]}" $
