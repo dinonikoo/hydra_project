@@ -1,7 +1,7 @@
 #TODO: вывод ошибок в файл
 imports = '''{-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.MyModule where
+module Hydra.Sources.mainModule where
 
 import           Hydra.Dsl.Annotations as A
 import           Hydra.Dsl.Bootstrap
@@ -251,7 +251,7 @@ def format_value(value_ast):
     return "-- unsupported expression"
 
 def generate_my_module(data):
-    module_name = "myModule"
+    module_name = "mainModule"
 
     namespace = None
     elements = []
