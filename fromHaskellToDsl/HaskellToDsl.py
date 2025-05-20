@@ -807,14 +807,12 @@ module {file_name} where
 
 
 # ======== I/O =========
-if __name__ == "__main__":
-    INPUT_PATH = "C:/2 курс/курсовая/test1_.hs" #откуда берём код
-    OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs" #куда записываем
-    FILE_NAME = "Hydra.GenDSL" #где лежит файл 
-    SAVED_NAME = "hydra.test" #Имя сохраняемого для гидры файлы
-    MODULE_NAME = "mainModule" #имя модуля
-    EXCEPTION_FILE = "exceptions.txt"  # Файл для записи исключений
-
+def convertFileAPIHaskell(path_to_file_dir):
+    INPUT_PATH = f"{path_to_file_dir}/initialFile.hs"
+    FILE_NAME = "initialFile"
+    SAVED_NAME = "hydra.test"
+    MODULE_NAME = "myModuleTest"
+    
     try:
         with open(INPUT_PATH, "r", encoding="utf-8") as f:
             haskell_code = f.read()
@@ -826,18 +824,43 @@ if __name__ == "__main__":
             module_name=MODULE_NAME,
         )
 
-        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-            f.write(hydra_code)
+        print(f"✅ DSL-модуль записан в: {path_to_file_dir}")
 
-        print(f"✅ DSL-модуль записан в: {OUTPUT_PATH}")
+        return hydra_code
     except Exception as e:
         print(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
+        return False
+# if __name__ == "__main__":
+#     INPUT_PATH = "C:/2 курс/курсовая/test1_.hs" #откуда берём код
+#     OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs" #куда записываем
+#     FILE_NAME = "Hydra.GenDSL" #где лежит файл 
+#     SAVED_NAME = "hydra.test" #Имя сохраняемого для гидры файлы
+#     MODULE_NAME = "mainModule" #имя модуля
+#     EXCEPTION_FILE = "exceptions.txt"  # Файл для записи исключений
 
-        # Записываем исключение в файл
-        with open(EXCEPTION_FILE, "a", encoding="utf-8") as f:
-            f.write(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
+#     try:
+#         with open(INPUT_PATH, "r", encoding="utf-8") as f:
+#             haskell_code = f.read()
 
-        exit(1)
+#         hydra_code = process_haskell_to_hydra(
+#             haskell_code,
+#             file_name=FILE_NAME,
+#             save_name=SAVED_NAME,
+#             module_name=MODULE_NAME,
+#         )
+
+#         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+#             f.write(hydra_code)
+
+#         print(f"✅ DSL-модуль записан в: {OUTPUT_PATH}")
+#     except Exception as e:
+#         print(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
+
+#         # Записываем исключение в файл
+#         with open(EXCEPTION_FILE, "a", encoding="utf-8") as f:
+#             f.write(f"\n❌ Ошибка при генерации DSL-модуля:\n{e}")
+
+#         exit(1)
 
 
 """
