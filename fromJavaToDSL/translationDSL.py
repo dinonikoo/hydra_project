@@ -1,7 +1,7 @@
 #TODO: вывод ошибок в файл
 imports = '''{-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.mainModule where
+module Hydra.GenDSL where
 
 import           Hydra.Dsl.Annotations as A
 import           Hydra.Dsl.Bootstrap
