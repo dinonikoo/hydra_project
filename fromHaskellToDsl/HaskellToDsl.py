@@ -808,11 +808,11 @@ module {file_name} where
 
 # ======== I/O =========
 if __name__ == "__main__":
-    INPUT_PATH = "C:/2 курс/курсовая/test1_.hs"
-    OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs"
-    FILE_NAME = "Hydra.GenDSL"
-    SAVED_NAME = "hydra.test"
-    MODULE_NAME = "mainModule"
+    INPUT_PATH = "C:/2 курс/курсовая/test1_.hs" #откуда берём код
+    OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs" #куда записываем
+    FILE_NAME = "Hydra.GenDSL" #где лежит файл 
+    SAVED_NAME = "hydra.test" #Имя сохраняемого для гидры файлы
+    MODULE_NAME = "mainModule" #имя модуля
     EXCEPTION_FILE = "exceptions.txt"  # Файл для записи исключений
 
     try:
