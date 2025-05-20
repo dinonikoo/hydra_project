@@ -219,7 +219,8 @@ declarationForRecordType isInner isSer aliases tparams elName fields = do
       else pure []
     cons <- constructor
     let tn = []
-    let bodyDecls = tn ++ memberVars' ++ (noComment <$> [cons, equalsMethod, hashCodeMethod] ++ withMethods)
+    --let bodyDecls = tn ++ memberVars' ++ (noComment <$> [cons, equalsMethod, hashCodeMethod] ++ withMethods)
+    let bodyDecls = tn ++ memberVars' ++ (noComment <$> [])
     return $ javaClassDeclaration aliases tparams elName classModsPublic Nothing (interfaceTypes isSer) bodyDecls
   where
     constructor = do
@@ -339,7 +340,8 @@ declarationForUnionType isSer aliases tparams elName fields = do
     variantClasses <- CM.mapM (fmap augmentVariantClass . unionFieldClass) fields
     let variantDecls = Java.ClassBodyDeclarationClassMember . Java.ClassMemberDeclarationClass <$> variantClasses
     variantDecls' <- CM.zipWithM addComment variantDecls fields
-    let otherDecls = noComment <$> [privateConstructor, toAcceptMethod True tparams, visitor, partialVisitor]
+    --let otherDecls = noComment <$> [privateConstructor, toAcceptMethod True tparams, visitor, partialVisitor]
+    let otherDecls = noComment <$> []
     tn <- do
       d <- constantDeclForTypeName aliases elName
       dfields <- CM.mapM (constantDeclForFieldType aliases) fields
