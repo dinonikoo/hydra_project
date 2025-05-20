@@ -4,6 +4,9 @@ import ast
 dsl_map = {
     'list':  ('Strings.toList',     'String -> [Int]'),
     'len':   ('Strings.length',     'String -> Int'),
+}
+
+dsl_method_map = {
     'upper': ('Strings.toUpper',    'String -> String'),
     'lower': ('Strings.toLower',    'String -> String'),
 }
@@ -35,6 +38,8 @@ def infer_sig(node):
         f = node.func
         if isinstance(f, ast.Attribute) and f.attr in dsl_map:
             return dsl_map[f.attr][1]
+        if isinstance(f, ast.Attribute) and f.attr in dsl_method_map:
+            return dsl_method_map[f.attr][1]
         if isinstance(f, ast.Name) and f.id in dsl_map:
             return dsl_map[f.id][1]
     if isinstance(node, ast.BinOp):
@@ -68,8 +73,12 @@ def to_haskell_expr(node):
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Attribute):
             obj = to_haskell_expr(node.func.value)
-            func = dsl_map.get(node.func.attr, ('-- unsupported function', ))[0]
-            return f"{func} ({obj})"
+            method = node.func.attr
+            if method in dsl_method_map:
+                func = dsl_method_map[method][0]
+                return f"{func} ({obj})"
+            else:
+                return "-- unknown method"
         elif isinstance(node.func, ast.Name):
             arg = to_haskell_expr(node.args[0])
             func = dsl_map.get(node.func.id, ('-- unsupported function', ))[0]
@@ -129,7 +138,7 @@ def to_haskell_expr(node):
         target = to_haskell_expr(node.value)
         index_node = node.slice
         index = None
-        if isinstance(index_node, ast.Constant):  # arr[0], arr[-1]
+        if isinstance(index_node, ast.Constant):
             index = index_node.value
         elif isinstance(index_node, ast.UnaryOp) and isinstance(index_node.op, ast.USub) and isinstance(index_node.operand, ast.Constant):
             index = -index_node.operand.value
@@ -170,7 +179,7 @@ def to_haskell_function(func):
     arg_t = infer_arg_type(arg, func)
     body = to_haskell_expr(expr)
     return (f"{func.name}Def :: TElement ({arg_t} -> {ret_t})\n"
-            f"{func.name}Def = definitionInModule generatedModule \"{func.name}\" $\n"
+            f"{func.name}Def = definitionInModule mainModule \"{func.name}\" $\n"
             f"  Base.lambda \"{arg}\" $\n"
             f"    {body}\n")
 
@@ -198,19 +207,38 @@ def to_haskell_variable(name, node):
     parts = [t.strip() for t in sig.split('->')]
     if len(parts) == 2:
         arg_t, ret_t = parts
-    else: arg_t, ret_t = parts[0], parts[-1]
-    if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Name):
-        arg_name = node.args[0].id
-    else: arg_name = name
+    else:
+        arg_t, ret_t = parts[0], parts[-1]
+
     body = to_haskell_expr(node)
-    if len(parts) == 2:
-        return (f"{name}Def :: TElement ({arg_t} -> {ret_t})\n"
-                f"{name}Def = definitionInModule generatedModule \"{name}\" $\n"
-                f"  Base.lambda \"{arg_name}\" $\n"
-                f"    {body}\n")
+
+    if isinstance(node, ast.Call) and node.args:
+        arg = node.args[0]
+        if isinstance(arg, ast.Constant):
+            return (f"{name}Def :: TElement {ret_t}\n"
+                    f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
+                    f"  {body}\n")
+        elif isinstance(arg, ast.Name):
+            # str2 = list(s) или str2 = upper(s)
+            return (f"{name}Def :: TElement ({arg_t} -> {ret_t})\n"
+                    f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
+                    f"  Base.lambda \"{arg.id}\" $\n"
+                    f"    {body}\n")
+
+    # Новый случай: str2 = str1.upper()
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        obj = node.func.value
+        if isinstance(obj, ast.Name):
+            return (f"{name}Def :: TElement ({arg_t} -> {ret_t})\n"
+                    f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
+                    f"  Base.lambda \"{obj.id}\" $\n"
+                    f"    {body}\n")
+
+    # По умолчанию — значение
     return (f"{name}Def :: TElement {ret_t}\n"
-            f"{name}Def = definitionInModule generatedModule \"{name}\" $\n"
+            f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
             f"  {body}\n")
+
 
 # === Module assembler ===
 def to_haskell_module(source):
@@ -232,7 +260,7 @@ def to_haskell_module(source):
 
     header = """{-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.Generated where
+module Hydra.Sources.Main where
 
 import           Hydra.Dsl.Annotations
 import qualified Hydra.Dsl.Bootstrap   as Bootstrap
@@ -252,8 +280,8 @@ import qualified Hydra.Dsl.Lib.Equality as Equality
 import qualified Hydra.Dsl.Lib.Strings as Strings
 import qualified Hydra.Dsl.Lib.Lists   as Lists
 
-generatedModule :: Module
-generatedModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just "Generated")
+mainModule :: Module
+mainModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just "Generated")
   where
     ns = Namespace "hydra.examples"
     def = Bootstrap.datatype ns
@@ -274,10 +302,13 @@ x = 890
 arr = [4, 5, 6]
 def func1(arr):
     return not (arr[0] == arr[-1])
-new = list("27394")
+    
+#list(...) переводится только на Java и Haskell
+numbers = list("0123456789")
+new = list(old)
 
 str1 = "Wonderful"
-str2 = upper(str1)
+str2 = str1.upper()
 eq = "awesome" == "awful"
 dlina = len("Brilliant")
 
