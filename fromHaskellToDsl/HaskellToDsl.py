@@ -1,5 +1,4 @@
 import re
-import traceback
 
 from lark import Lark, Transformer
 
@@ -7,13 +6,21 @@ from lark import Lark, Transformer
 haskell_grammar = r"""
 ?start: toplevel_declarations
 
-toplevel_declarations: (function_decl (_NEWLINE | WS_INLINE)* function_def)+
+toplevel_declarations: (class_decl | function_decl (_NEWLINE | WS_INLINE)* function_def)+
+
+class_declarations: class_decl
+
+class_decl: "data" NAME "=" _NL? NAME _NL? "{" class_fields "}"
+
+class_fields: (class_field ("," class_field)*)
+class_field: NAME "::" type          -> class_field
+
+
+
 
 function_decl: NAME "::" type
 function_def: NAME var_list? "=" expression
 var_list: NAME+
-
-
 
 type: type_atom "->" type     -> function_type
     | type_atom               -> base_type
@@ -87,7 +94,8 @@ COMMENT: /--.*/
 ML_COMMENT: /\{\-[^(\-\})]*\-\}/
 %ignore ML_COMMENT
 IMPORT_LINE: "import" /[^\n]*/    
-%ignore IMPORT_LINE               
+%ignore IMPORT_LINE             
+_NL: /(\s*\r?\n\s*)+/
 """
 
 # ======== PARSER =========
@@ -105,22 +113,80 @@ typed_builtin_functions = {
 }
 
 
+def extract_ifelse_parts(expr: str):
+    """
+    Разбирает выражение Logic.ifElse (...) (...) (...) с учётом вложенности скобок.
+    Возвращает кортеж из трёх подвыражений: cond, then, else.
+    """
+    if not expr.startswith("Logic.ifElse"):
+        return None
+
+    def extract_balanced(expr, start):
+        """Находит выражение в сбалансированных скобках начиная с индекса `start`"""
+        if expr[start] != "(":
+            raise ValueError("❌ Ожидалась скобка")
+
+        count = 1
+        i = start + 1
+        while i < len(expr):
+            if expr[i] == "(":
+                count += 1
+            elif expr[i] == ")":
+                count -= 1
+                if count == 0:
+                    return expr[start + 1 : i], i + 1
+            i += 1
+        raise ValueError("❌ Несбалансированные скобки в ifElse")
+
+    i = expr.find("Logic.ifElse") + len("Logic.ifElse")
+    while i < len(expr) and expr[i] in " \t":
+        i += 1
+
+    cond, i = extract_balanced(expr, i)
+    while i < len(expr) and expr[i] in " \t":
+        i += 1
+    then, i = extract_balanced(expr, i)
+    while i < len(expr) and expr[i] in " \t":
+        i += 1
+    else_, i = extract_balanced(expr, i)
+
+    return cond.strip(), then.strip(), else_.strip()
+
+
 def infer_return_type(expr: str) -> str:
+
     expr_stripped = expr.strip()
-    expr_nospace = re.sub(r"\s+", "", expr_stripped)
+    if expr_stripped.startswith("(Base.string"):
+        return "String"
+    if expr_stripped.startswith("(Base.int32"):
+        return "Int"
+    expr_nospace = re.sub(r"\s+(?=[()\[\]])", "", expr_stripped)
+    expr_nospace = re.sub(r"(?<=[()\[\]])\s+", "", expr_nospace)
 
     print(f"📥 expr_nospace: {expr_nospace}")
+
+    if expr_stripped.startswith("Logic.ifElse"):
+
+        cond, then_expr, else_expr = extract_ifelse_parts(expr_stripped)
+        then_type = infer_return_type(then_expr)
+        else_type = infer_return_type(else_expr)
+        print(f"[DEBUG] 🔍 Logic.ifElse: then={then_type}, else={else_type}")
+        if then_type != else_type:
+            raise ValueError(
+                f"❌ 1234Несовместимые типы в Logic.ifElse: then={then_type}, else={else_type}"
+            )
+        return then_type
 
     # Используем re.search вместо re.match
     match = re.search(r"([A-Za-z0-9_\.]+)[\(\[]", expr_nospace)
     print(f"🔍 match: {match}")
 
     if not match:
-        print("⚠️Соотвествия не найдуткет!")
+
         return "Unknown"
 
     func = match.group(1)
-    print(f"[DEBUG] Обнаружена функция : {func}")
+    print(f"есть функция : {func}")
 
     if func == "Strings.cat2":
         if "Base.int32" in expr:
@@ -184,12 +250,22 @@ class HydraTransformer(Transformer):
         self.arg_names = []
 
     def toplevel_declarations(self, items):
-        element_list = ",\n      ".join(
-            [f"el {item[0]}Def" for item in self.definitions]
+        element_lines = []
+        for name, dsl in self.definitions:
+            if name:
+                element_lines.append(f"        el {name}Def")
+            else:
+
+                element_lines.append(f"      {dsl}")
+
+        elements_block = ",\n".join(element_lines)
+
+        function_defs = "\n\n".join(
+            dsl for name, dsl in self.definitions if name is not None
         )
-        function_defs = "\n\n".join(item[1] for item in self.definitions)
+
         return f"""elements = [
-      {element_list}]
+{elements_block}]
 
 {function_defs}"""
 
@@ -222,7 +298,6 @@ class HydraTransformer(Transformer):
         type_str = self.last_decl[1]
         type_parts = [t.strip() for t in type_str.split("->")]
 
-        # ✅ Сначала заполняем текущие типы аргументов
         self.arg_names = args
         normalized_arg_types = [t.replace("Integer", "Int") for t in self.arg_types]
         self.arg_name_to_type = {
@@ -258,6 +333,15 @@ class HydraTransformer(Transformer):
             if expr[0] == "(" and expr[-1] != ")":
                 expr = expr + ")"
             print("1111111", expr)
+            if expr.startswith("Base.list"):
+                if "Base.int32" in expr:
+                    return "[Int]"
+                if "Base.string" in expr:
+                    return "[String]"
+                return "[a]"  # fallback
+
+            if expr in ("Base.true", "Base.false"):
+                return "Bool"
 
             if expr.startswith("(Base.string "):
                 return "String"
@@ -275,7 +359,7 @@ class HydraTransformer(Transformer):
                 if var_match:
                     var = var_match.group(1)
                     typ = self.arg_name_to_type.get(var, "Unknown").strip()
-                    print(f"[DEBUG] 📌 var '{var}' → тип '{typ}'")
+
                     if typ in ["a", "[a]"]:
                         return typ
 
@@ -304,6 +388,8 @@ class HydraTransformer(Transformer):
 
             if type_l == "String":
                 return f"Equality.equalString ({lhs}) ({rhs})"
+            elif type_l == "Bool":
+                return f"Equality.equalBoolean ({lhs}) ({rhs})"
             else:
                 return f"Equality.equalInt32 ({lhs}) ({rhs})"
 
@@ -322,9 +408,7 @@ class HydraTransformer(Transformer):
             if typ == "String":
                 old = f'Lists.null ((Base.var "{var}"))'
                 new = f'Strings.isEmpty ((Base.var "{var}"))'
-                print(
-                    f"[DEBUG] ⏩ Replacing null for string var '{var}': {old} -> {new}"
-                )
+
                 dsl_expr = dsl_expr.replace(old, new)
 
         length_calls = re.findall(
@@ -336,26 +420,22 @@ class HydraTransformer(Transformer):
             if typ != "String":
                 old = f'Strings.length ((Base.var "{var}"))'
                 new = f'Lists.length ((Base.var "{var}"))'
-                print(
-                    f"[DEBUG] 🔄 Replacing length for non-string var '{var}': {old} -> {new}"
-                )
+
                 dsl_expr = dsl_expr.replace(old, new)
 
         # Функция для ++
-        cat2_calls = re.findall(
-            r"Strings\.cat2\s*\(\((.*?)\)\)\s*\(\((.*?)\)\)", dsl_expr
-        )
+        cat2_calls = re.findall(r"Strings\.cat2\s*\((.*?)\)\s*\((.*?)\)", dsl_expr)
 
         for lhs, rhs in cat2_calls:
             lhs_type = guess_type(lhs)
             rhs_type = guess_type(rhs)
-            print(lhs)
+            print(f"[DEBUG] ++: lhs={lhs} ({lhs_type}), rhs={rhs} ({rhs_type})")
 
             if lhs_type == rhs_type == "String":
                 continue  # всё верно
             elif lhs_type.startswith("[") and rhs_type.startswith("["):
-                old = f"Strings.cat2 (({lhs})) (({rhs}))"
-                new = f"Lists.concat2 (({lhs})) (({rhs}))"
+                old = f"Strings.cat2 ({lhs}) ({rhs})"
+                new = f"Lists.concat2 ({lhs}) ({rhs})"
                 print(f"[DEBUG] 🔄 Replacing cat2 for list: {old} → {new}")
                 dsl_expr = dsl_expr.replace(old, new)
             else:
@@ -373,9 +453,7 @@ class HydraTransformer(Transformer):
             if match_var:
                 var_name = match_var.group(1)
                 arg_typ = self.arg_name_to_type.get(var_name, "")
-                print(
-                    f"[DEBUG] 🧠 Пытаемся уточнить 'a' → {arg_typ} по переменной '{var_name}'"
-                )
+
                 if arg_typ.startswith("[") and arg_typ.endswith("]"):
                     # если [Int] → значит head возвращает Int
                     element_type = arg_typ[1:-1]
@@ -394,12 +472,12 @@ class HydraTransformer(Transformer):
                 and expected_return_type != "[a]"
             ):
                 print(
-                    f"[INFO] ✅ '[a]' интерпретирован как допустимый тип для {expected_return_type}"
+                    f"'[a]' интерпретирован как допустимый тип для {expected_return_type}"
                 )
                 pass
             else:
                 raise ValueError(
-                    f"❌ Несоответствие возвращаемого типа в функции '{name}': из сигнатуры ожидается '{expected_return_type}', но получается '{inferred}'"
+                    f"❌ Несоответствие возвращаемого типа в функции '{name}': из сигнатуры ожидается '{expected_return_type}', но по выражению получается '{inferred}'"
                 )
 
         for arg in reversed(args):
@@ -410,7 +488,7 @@ class HydraTransformer(Transformer):
         function_def = (
             f"{name}Def :: TElement ({arg_types})\n"
             f'{name}Def = definitionInModule {self.module_name} "{name}" $\n'
-            f"{dsl_expr}"
+            f"{'  ' + dsl_expr if not dsl_expr.startswith(' ') else dsl_expr}"  # для приссваивания
         )
 
         self.definitions.append((name, function_def))
@@ -560,9 +638,6 @@ class HydraTransformer(Transformer):
             elif isinstance(args[0], str) and args[0].startswith('(Base.var "'):
                 varname = args[0].split('"')[1]
 
-            print(f"[DEBUG] function_call: func='null' varname='{varname}' args={args}")
-            print(f"[DEBUG] available types: {self.arg_name_to_type}")
-
             if varname and varname in self.arg_name_to_type:
                 arg_type = self.arg_name_to_type[varname].strip()
                 if arg_type == "String":
@@ -608,7 +683,7 @@ class HydraTransformer(Transformer):
             and isinstance(items[0], str)
             and items[0].startswith("  Base.list")
         ):
-            print("💡 Detected already wrapped Base.list, returning as-is")
+
             return items[0]
 
         elements = [str(item) for item in items]
@@ -626,7 +701,51 @@ class HydraTransformer(Transformer):
             print(f"12345 Base.list [{', '.join(elements)}]")
             return f"  Base.list [{', '.join(elements)}]"
 
-        raise ValueError("❌ Поддерживаются только списки Int или String")
+        raise ValueError("❌ Поддерживаются только списки Int или String, не смешанные")
+
+    # Добавление data-классов
+    def class_decl(self, items):
+        class_name = str(items[0])
+        constructor_name = str(items[1])
+        fields_tree = items[2]
+        fields = fields_tree.children
+
+        print("[DEBUG] class_decl →", class_name, constructor_name, fields)
+
+        field_lines = []
+        for field in fields:
+            field_name, field_type = field
+            field_dsl_type = self._convert_type_to_dsl(field_type)
+            field_lines.append(f'            "{field_name}" Types.>: {field_dsl_type}')
+
+        fields_block = ",\n".join(field_lines)
+
+        class_def = f"""def "{class_name}" $
+        Types.record [
+{fields_block}
+        ]"""
+
+        self.definitions.append((None, class_def))
+        return ""
+
+    def _convert_type_to_dsl(self, typ: str) -> str:
+        if typ == "String":
+            return "Types.string"
+        if typ == "Int":
+            return "Types.int32"
+        if typ == "Int16":
+            return "Types.int16"
+        if typ == "Int64":
+            return "Types.int64"
+        if typ.startswith("[") and typ.endswith("]"):
+            inner = typ[1:-1].strip()
+            return f"Types.list({self._convert_type_to_dsl(inner)})"
+        raise ValueError(f"❌ Неизвестный тип: {typ}")
+
+    def class_field(self, items):
+        field_name = str(items[0])
+        field_type = str(items[1])
+        return (field_name, field_type)
 
 
 # ======== CONVERTER FUNCTION =========
@@ -674,24 +793,26 @@ def process_haskell_to_hydra(
 
     return f"""-- This file was auto-generated from Haskell
 
-module Hydra.Sources.{file_name} where
+module {file_name} where
 
 {imports}
 
 {module_name} :: Module
 {module_name} = Module (Namespace "{save_name.lower()}") elements [{core}] [{core}] (Just "Test functions")
   where
+    ns = Namespace "{save_name.lower()}"
+    def = datatype ns
     {elements_block}
 """
 
 
 # ======== I/O =========
 if __name__ == "__main__":
-    INPUT_PATH = "C:/2 курс/курсовая/test1.hs"
+    INPUT_PATH = "C:/2 курс/курсовая/test1_.hs"
     OUTPUT_PATH = "C:/2 курс/курсовая/gen-test.hs"
-    FILE_NAME = "MyMath"
+    FILE_NAME = "Hydra.GenDSL"
     SAVED_NAME = "hydra.test"
-    MODULE_NAME = "myModuleTest"
+    MODULE_NAME = "mainModule"
     EXCEPTION_FILE = "exceptions.txt"  # Файл для записи исключений
 
     try:
@@ -749,10 +870,11 @@ cat +
 --проверка параметризации для массивов добавлена
 
 
---TODO: вложенные листы? фильтр
+
 --вставить классы
 
---добавить сохранение имён функций, потоум что 2 с одним названием нельзя 
+--добавить сохранение имён функций, потоум что 2 с одним названием нельзя   
 
 --файл очищать добавить
+--поддержка дата классов. и в них Int64, Int16. К ним требуется импорт "import Data.Int"
 """
