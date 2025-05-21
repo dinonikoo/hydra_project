@@ -14,7 +14,6 @@ TOKEN_REGEX = re.compile(r'''
 
 
 def parse_code(code):
-    #поддержка вложенности - например для List, внутри может быть много List, вложенных друг в друга
     def parse_type(type_str):
         type_str = type_str.strip()
 
