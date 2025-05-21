@@ -47,6 +47,8 @@ def translate():
         source_lang = data.get('source_lang', 'haskell')
         target_lang = data.get('target_lang', 'java')
 
+        if os.path.exists(os.path.join(current_dir,"hydra")): shutil.rmtree(os.path.join(current_dir,"hydra"))
+
         strToFile(source_code,source_lang)
         print("Перевод из строки в начальный файл")
         res = fileToDSL(source_lang)

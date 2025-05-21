@@ -16,7 +16,7 @@ from fromPythonToDSL.main import *
 
 
 global_dir = os.getcwd()
-current_dir = os.path.join(global_dir, "wrapperAPI","genFiles")
+current_dir = os.path.join(global_dir, "hydra_project", "wrapperAPI","genFiles")
 SCOTTY_URL = "http://localhost:3000/translate"
 
 headersDSL = """import Hydra.Codegen
