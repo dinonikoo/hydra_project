@@ -2,7 +2,7 @@ import sys
 import re
 import os
 from functools import partial
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 class PythonParser:
     def __init__(self):
@@ -60,26 +60,26 @@ class PythonParser:
             content = re.sub(pattern, '', content, flags=re.MULTILINE)
         return content.strip()
 
-    def _build_common_transforms(self) -> List[Tuple[str, str, Optional[int]]]:
+    def _build_common_transforms(self) -> List[Tuple[str, str]]:
         return [
+            (r'hydra\.lib\.math\.neg\s*\(\s*(.+?)\s*\)', r'(-\1)'),
+            (r'hydra\.lib\.math\.add\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 + \2)'),
+            (r'hydra\.lib\.math\.sub\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 - \2)'),
+            (r'hydra\.lib\.math\.mul\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 * \2)'),
+            (r'hydra\.lib\.math\.div\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 // \2)'),
+            (r'hydra\.lib\.math\.mod\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 % \2)'),
+
             (r'hydra\.lib\.equality\.equal_string\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 == \2)'),
             (r'hydra\.lib\.equality\.equal_int32\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 == \2)'),
             (r'hydra\.lib\.equality\.gt_int32\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 > \2)'),
             (r'hydra\.lib\.equality\.gte_int32\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 >= \2)'),
             (r'hydra\.lib\.equality\.lt_int32\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 < \2)'),
             (r'hydra\.lib\.equality\.lte_int32\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 <= \2)'),
-
+            (r'hydra\.lib\.equality\.egual_bool\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 == \2)'),
             
             (r'hydra\.lib\.strings\.is_empty\s*\(\s*(.+?)\s*\)', r'(not \1)'),
             (r'hydra\.lib\.strings\.to_upper\s*\(\s*(.+?)\s*\)', r'\1.upper()'),
             (r'hydra\.lib\.strings\.to_lower\s*\(\s*(.+?)\s*\)', r'\1.lower()'),
-
-            
-            (r'hydra\.lib\.math\.add\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 + \2)'),
-            (r'hydra\.lib\.math\.sub\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 - \2)'),
-            (r'hydra\.lib\.math\.mul\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 * \2)'),
-            (r'hydra\.lib\.math\.div\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 // \2)'),
-            (r'hydra\.lib\.math\.mod\s*\(\s*(.+?)\s*,\s*(.+?)\s*\)', r'(\1 % \2)'),
 
             
             (r'hydra\.lib\.logic\.not_\s*\(\s*(.+?)\s*\)', r'(not \1)'),
@@ -93,7 +93,7 @@ class PythonParser:
             (r'hydra\.lib\.lists\.is_empty\s*\(\s*(.+?)\s*\)', r'(not \1)'),
             
             
-            (r'frozenlist\[', r'list[', re.IGNORECASE),
+            (r'frozenlist\[', r'list['),
         ]
 
     def apply_transforms_recursively(self, content: str, max_depth: int = 10) -> str:
