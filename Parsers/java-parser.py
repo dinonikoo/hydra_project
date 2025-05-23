@@ -29,9 +29,8 @@ class JavaParser:
 
     def _apply_processing_pipeline(self, content: str) -> str:
         processing_steps = [
-            self.remove_autogen_comment,
             self.remove_comments,
-            self.transform_hydra_code,
+            self.apply_transforms_recursively,
             self.fix_integer_declarations,
             self.fix_boolean_declarations,
             self.add_standard_imports,
@@ -41,9 +40,6 @@ class JavaParser:
             content = step(content)
         return content
 
-    def remove_autogen_comment(self, content: str) -> str:
-        return re.sub(r'// Note: this is an automatically generated file. Do not edit.\n\n', '', content)
-
     def remove_comments(self, content: str) -> str:
         content = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
         content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
@@ -51,26 +47,17 @@ class JavaParser:
 
     def _build_common_transforms(self) -> List[Tuple[str, str, Optional[int]]]:
         return [
-            (r'hydra\.lib\.logic\.IfElse\.apply\(\s*([^,]+),\s*([^,]+),\s*([^)]+)\s*\)', r'(\1) ? \2 : \3'),
-            (r'hydra\.lib\.strings\.IsEmpty\.apply\(\s*([^)]+)\s*\)', r'(\1).isEmpty()'),           
-
-
-            (r'hydra\.lib\.equality\.EqualString\.apply\(([^,]+),\s*([^)]+)\)', r'\1.equals(\2)'),
-            (r'hydra\.lib\.equality\.EqualInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 == \2'),
-            (r'hydra\.lib\.equality\.GtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 > \2'),
-            (r'hydra\.lib\.equality\.GteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 >= \2'),
-            (r'hydra\.lib\.equality\.LtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 < \2'),
-            (r'hydra\.lib\.equality\.LteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 <= \2'),
-
-
-            (r'hydra\.lib\.strings\.Length\.apply\((.*?)\)', r'\1.length()'),
-            (r'hydra\.lib\.strings\.ToLower\.apply\((.*?)\)', r'\1.toLowerCase()'),
-            (r'hydra\.lib\.strings\.ToUpper\.apply\((.*?)\)', r'\1.toUpperCase()'),
-            (r'hydra\.lib\.strings\.FromList\.apply\((.*?)\)', r'new String(\1)'),
-            (r'hydra\.lib\.strings\.Cat\.apply\((.*?)\)', r'String.join("", \1)'),
+            (r'hydra\.lib\.strings\.IsEmpty\.apply\(\s*([^)]+)\s*\)', r'(\1).isEmpty()'),
+            (r'hydra\.lib\.strings\.Length\.apply\(\s*([^)]+)\s*\)', r'(\1).length()'),
+            (r'hydra\.lib\.strings\.ToLower\.apply\(\s*([^)]+)\s*\)', r'(\1).toLowerCase()'),
+            (r'hydra\.lib\.strings\.ToUpper\.apply\(\s*([^)]+)\s*\)', r'(\1).toUpperCase()'),
+            (r'hydra\.lib\.strings\.FromList\.apply\(\s*([^)]+)\s*\)', r'new String(\1)'),
+            (r'hydra\.lib\.strings\.Cat\.apply\(\s*([^)]+)\s*\)', r'String.join("", \1)'),
             (r'hydra\.lib\.strings\.Cat2\.apply\((.*?),\s*(.*?)\)', r'\1 + \2'),
             (r'hydra\.lib\.strings\.Intercalate\.apply\((.*?),\s*(.*?)\)', r'String.join(\1, \2)'),
-            (r'hydra\.lib\.strings\.SplitOn\.apply\((.*?),\s*(.*?)\)', r'\1.split(\2)'),
+            (r'hydra\.lib\.strings\.SplitOn\.apply\((.*?),\s*(.*?)\)', r'\1.split(\2)'),          
+
+
 
 
             (r'hydra\.lib\.chars\.(ToUpper|ToLower|IsUpper|IsLower)\.apply\((\d+)\)',
@@ -90,6 +77,13 @@ class JavaParser:
             (r'hydra\.lib\.math\.Div\.apply\(([^,]+),\s*([^)]+)\)', r'(\1 / \2)'),
             (r'hydra\.lib\.math\.Rem\.apply\(([^,]+),\s*([^)]+)\)', r'(\1 % \2)'),
             (r'hydra\.lib\.math\.Mod\.apply\(([^,]+),\s*([^)]+)\)', r'Math.floorMod(\1, \2)'),
+
+            (r'hydra\.lib\.equality\.EqualString\.apply\(([^,]+),\s*([^)]+)\)', r'\1.equals(\2)'),
+            (r'hydra\.lib\.equality\.EqualInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 == \2'),
+            (r'hydra\.lib\.equality\.GtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 > \2'),
+            (r'hydra\.lib\.equality\.GteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 >= \2'),
+            (r'hydra\.lib\.equality\.LtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 < \2'),
+            (r'hydra\.lib\.equality\.LteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 <= \2'), 
             
 
             (r'hydra\.lib\.logic\.IfElse\.apply\(([^,]+),\s*([^,]+),\s*([^)]+)\)', r'(\1) ? \2 : \3'),
@@ -118,7 +112,7 @@ class JavaParser:
                 transformed = re.sub(pattern, replacement, transformed)
         return transformed
 
-    def transform_hydra_code(self, content: str) -> str:
+    def apply_transforms_recursively(self, content: str) -> str:
         content = self._transform_nested_calls(content)
         for pattern, replacement in self.common_transforms:
             if callable(replacement):
@@ -156,7 +150,6 @@ class JavaParser:
     def add_standard_imports(self, content: str) -> str:
         imports = [
             "import java.util.*;",
-            "import java.util.regex.Pattern;",
             "import java.lang.Character;",
             "import java.lang.Math;"
         ]
