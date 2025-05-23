@@ -192,6 +192,10 @@ class HaskellParser:
         return content.strip() + '\n'
 
 
-if __name__ == "__main__":    
+# if __name__ == "__main__":    
+#     parser = HaskellParser()
+#     parser.parse_hydra_haskell(sys.argv[1], sys.argv[2])
+
+def parseHydraHaskell(path_to_file_inp,path_to_file_out):
     parser = HaskellParser()
-    parser.parse_hydra_haskell(sys.argv[1], sys.argv[2])
+    parser.parse_hydra_haskell(path_to_file_inp,path_to_file_out)

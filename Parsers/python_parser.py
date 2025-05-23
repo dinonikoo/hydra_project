@@ -164,6 +164,6 @@ class PythonParser:
         content = re.sub(r'not\s*\(\s*([^)]+)\s*\)', r'not (\1)', content)
         return content.strip() + '\n'
 
-if __name__ == "__main__":    
+def parseHydraPython(path_to_file_inp,path_to_file_out):
     parser = PythonParser()
-    parser.parse_hydra_python(sys.argv[1], sys.argv[2])
+    parser.parse_hydra_python(path_to_file_inp,path_to_file_out)

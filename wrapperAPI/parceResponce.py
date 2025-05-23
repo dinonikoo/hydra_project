@@ -13,37 +13,14 @@ sys.path.append(str(project_root))
 from fromJavaToDSL.main import *
 from fromHaskellToDsl.HaskellToDsl import *
 from fromPythonToDSL.main import *
+from Parsers.haskell_parser import *
+from Parsers.java_parser import *
+from Parsers.python_parser import *
 
 
 global_dir = os.getcwd()
 current_dir = os.path.join(global_dir, "hydra_project", "wrapperAPI","genFiles")
 SCOTTY_URL = "http://localhost:3000/translate"
-
-headersDSL = """import Hydra.Codegen
-    ( TTerm, TElement, Module(Module), Namespace(Namespace) )
-import Hydra.Dsl.Base as Base ( definitionInModule, el, string )
-import qualified Hydra.Dsl.Core          as Core
-import qualified Hydra.Dsl.Lib.Equality  as Equality
-import qualified Hydra.Dsl.Lib.Io        as Io
-import qualified Hydra.Dsl.Lib.Lists     as Lists
-import qualified Hydra.Dsl.Lib.Literals  as Literals
-import qualified Hydra.Dsl.Lib.Logic     as Logic
-import qualified Hydra.Dsl.Lib.Maps      as Maps
-import qualified Hydra.Dsl.Lib.Math      as Math
-import qualified Hydra.Dsl.Lib.Optionals as Optionals
-import qualified Hydra.Dsl.Lib.Sets      as Sets
-import Hydra.Dsl.Lib.Strings as Strings ()
-import qualified Hydra.Dsl.Terms         as Terms
-import qualified Hydra.Dsl.Types         as Types
-import Hydra.Sources.Tier0.Core
-    ( TTerm, TElement, Module(Module), Namespace(Namespace) )
-import           Prelude hiding ((++))
-import qualified Data.List               as L
-import qualified Data.Map                as M
-import qualified Data.Set                as S
-import qualified Data.Maybe              as Y
-
-"""
 
 def strToFile(json_string, source_language):
     ext = "" #расширение файла в зависимости от выбранного языка
@@ -70,21 +47,11 @@ def fileToDSL(source_language):
         with open(path_to_gen,'w') as file: file.write("Transcription to DSL failed")
         return False
     else:
-        # name_module_i = -1
-        # for i in range(len(res)):
-        #     if res[i]==":" and res[i+1]==":":
-        #         name_module_i = i
-        #         continue
-        #     if name_module_i!=-1 and res[i]=="\n": 
-                
-        # res = "{-# LANGUAGE OverloadedStrings #-}\n\n module Hydra.GenDSL where\n\n"+headersDSL+res
         path_to_gen = os.path.join(current_dir,f"genDSL.hs")
         with open(path_to_gen,'w') as file: file.write(res)
         return res
 
 def DSLToLang(dsl_code, target_language):
-    # res = "" #содержимое DSL в виде строки
-    # with open(path_to_file,'r') as f: res = f.read()
     payload = {
     "dslCode": dsl_code,
     "targetLang": target_language,
@@ -95,28 +62,14 @@ def DSLToLang(dsl_code, target_language):
     responce = requests.post(SCOTTY_URL, json=payload)
     return responce
 
-# with open(os.path.join(current_dir,"genDSL.hs"),'r') as f: res = f.read()
-# DSLToLang(res,"Java")
+def parseTranslatedFile(target_lang):
+    parsedFilesPath = os.path.join(current_dir,"parsedFiles")
+    for root, dirs, files in os.walk(os.path.join(current_dir,"hydra")):
+            for file in files:
+                full_path = os.path.join(root, file)
+                out_file = os.path.join(parsedFilesPath,file)
+                if target_lang=="Haskell" and full_path.endswith(".hs"): parseHydraHaskell(full_path,out_file)
+                elif target_lang=="Python" and full_path.endswith(".py"): parseHydraPython(full_path,out_file)
+                elif target_lang=="Java" and full_path.endswith(".java"): parseHydraJava(full_path,out_file)
 
-# testStr = """public class Main
-# {
-#     public void main()
-#     {
-#         string s = "Hello";
-#     } 
-# }
-# """
-# strToFile(testStr,"Java")
-# fileToDSL("Java")
-# path_to_genDSL = os.path.join(current_dir,"genDSL.hs")
-# DSLToLang(path_to_genDSL,"Java")
-
-# Адрес Scotty-сервера (порт 3000)
-
-
-# DSL-код, который ты хочешь отправить
-# Параметры для перевода
-
-
-# Обработка ответа
-
+        

@@ -57,10 +57,11 @@ def translate():
             return jsonify({
             "success": False
             })
-        # with open(os.path.join(current_dir,"genDSL.hs"),'r') as f: res = f.read()
         responce = DSLToLang(res,target_lang)
         print("Перевод из DSL в другой язык")
         if responce.ok:
+            parseTranslatedFile(target_lang)
+            print("Парсинг итогового кода")
             zip_memory_file = make_zip_from_folder(current_dir)  # путь к папке с результатом
             return send_file(
                 zip_memory_file,
@@ -72,15 +73,6 @@ def translate():
             return jsonify({
             "success": False
             })
-
-        
-        # Здесь должна быть ваша логика трансляции
-        # translated_code = f"Translated {source_code} from {source_lang} to {target_lang}"
-        
-        # return jsonify({
-        #     "success": True,
-        #     "translated_code": translated_code
-        # })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

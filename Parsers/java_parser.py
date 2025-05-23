@@ -184,6 +184,6 @@ class JavaParser:
         content = re.sub(r'=\s*\n\s*', '= ', content)
         return content.strip() + '\n'
 
-if __name__ == "__main__":    
+def parseHydraJava(path_to_file_inp,path_to_file_out):
     parser = JavaParser()
-    parser.parse_hydra_java(sys.argv[1], sys.argv[2])
+    parser.parse_hydra_java(path_to_file_inp,path_to_file_out)
