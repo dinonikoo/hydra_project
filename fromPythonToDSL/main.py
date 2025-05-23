@@ -32,25 +32,24 @@ bool_op_map = {
     ast.Not: 'Logic.not',
 }
 
+type_map = {
+            'str': 'String',
+            'int': 'Int',
+            'bool': 'Bool',
+            'list': '[Int]'
+}
+
 # === Type Inference ===
 def infer_sig(node):
     if isinstance(node, ast.Call):
         f = node.func
-        if isinstance(f, ast.Attribute) and f.attr in dsl_map:
-            return dsl_map[f.attr][1]
         if isinstance(f, ast.Attribute) and f.attr in dsl_method_map:
-            return dsl_method_map[f.attr][1]
+            return dsl_method_map[f.attr][1].split('->')[-1].strip()
         if isinstance(f, ast.Name) and f.id in dsl_map:
-            return dsl_map[f.id][1]
+            return dsl_map[f.id][1].split('->')[-1].strip()
     if isinstance(node, ast.BinOp):
-        t = bin_op_map.get(type(node.op))
-        if t: return t[1].split('->')[-1].strip()
-    if isinstance(node, ast.Compare):
-        if isinstance(node.ops[0], ast.Eq):
-            return 'Bool'
-        t = compare_map.get(type(node.ops[0]))
-        if t: return t[1]
-    if isinstance(node, ast.BoolOp):
+        return 'Int'
+    if isinstance(node, ast.Compare) or isinstance(node, ast.BoolOp):
         return 'Bool'
     if isinstance(node, ast.UnaryOp):
         if isinstance(node.op, ast.Not):
@@ -87,7 +86,7 @@ def to_haskell_expr(node):
     if isinstance(node, ast.BinOp):
         left = to_haskell_expr(node.left)
         right = to_haskell_expr(node.right)
-        op = bin_op_map.get(type(node.op), ('-- unsupported operation', ))[0]
+        op = bin_op_map.get(type(node.op), ('-- unsupported binary operation', ))[0]
         return f"{op} ({left}) ({right})"
 
     if isinstance(node, ast.Compare):
@@ -102,13 +101,13 @@ def to_haskell_expr(node):
                 return f"Equality.equalBool ({left}) ({right})"
             return f"Equality.equalInt32 ({left}) ({right})"
         else:
-            op = compare_map.get(type(node.ops[0]), ('--', ))[0]
+            op = compare_map.get(type(node.ops[0]), ('-- unsupported compare', ))[0]
             return f"{op} ({left}) ({right})"
 
     if isinstance(node, ast.BoolOp):
         left = to_haskell_expr(node.values[0])
         right = to_haskell_expr(node.values[1])
-        op = bool_op_map.get(type(node.op), '--')
+        op = bool_op_map.get(type(node.op), '-- unsupported bool operation')
         return f"{op} ({left}) ({right})"
 
     if isinstance(node, ast.UnaryOp):
@@ -116,6 +115,7 @@ def to_haskell_expr(node):
             return f"Math.neg ({to_haskell_expr(node.operand)})"
         if isinstance(node.op, ast.Not):
             return f"{bool_op_map[ast.Not]} ({to_haskell_expr(node.operand)})"
+        return "-- unsupported unary operation"
 
     if isinstance(node, ast.IfExp):
         return (f"Logic.ifElse ({to_haskell_expr(node.test)}) "
@@ -130,6 +130,7 @@ def to_haskell_expr(node):
         if isinstance(v, bool): return f"Base.bool {str(v)}"
         if isinstance(v, int): return f"Base.int32 {v}"
         if isinstance(v, str): return f"Base.string \"{v}\""
+        return "-- unsupported type of constant"
 
     if isinstance(node, ast.List):
         return f"Base.list [{', '.join(to_haskell_expr(elt) for elt in node.elts)}]"
@@ -160,41 +161,72 @@ def infer_arg_type(arg_name, func_body):
     for node in ast.walk(func_body):
         if isinstance(node, ast.Name) and node.id == arg_name:
             context = node.parent
+            if isinstance(context, ast.Call) and context.func.id in dsl_map:
+                return dsl_map[context.func.id][1].split('->')[0].strip()
+            if isinstance(context, ast.Attribute) and context.attr in dsl_method_map:
+                return dsl_method_map[context.attr][1].split('->')[0].strip()
             if isinstance(context, ast.Compare):
-                return infer_sig(context.left if context.left.id != arg_name else context.comparators[0])
+                if context.left.id != arg_name:
+                    other = context.left
+                else: other = context.comparators[0]
+                return infer_sig(other)
             if isinstance(context, ast.BinOp):
                 return 'Int'
-            if isinstance(context, ast.Call):
-                return infer_sig(context.args[0])
             if isinstance(context, ast.Subscript):
                 return '[Int]'
-    return
-
+    return 
 
 # === Function generation ===
 def to_haskell_function(func):
-    arg = func.args.args[0].arg
-    expr = func.body[0].value if func.body and isinstance(func.body[0], ast.Return) else None
-    ret_t = infer_sig(expr)
-    arg_t = infer_arg_type(arg, func)
-    body = to_haskell_expr(expr)
-    return (f"{func.name}Def :: TElement ({arg_t} -> {ret_t})\n"
+    args = []
+    arg_types = []
+    for arg in func.args.args:
+        arg_name = arg.arg
+        args.append(arg_name)
+        if arg.annotation and isinstance(arg.annotation, ast.Name):
+            py_type = arg.annotation.id
+            hs_type = type_map.get(py_type, 'Int')
+            arg_types.append(hs_type)
+        else:
+            arg_types.append(infer_arg_type(arg_name, func.body[0]))
+
+    if func.returns and isinstance(func.returns, ast.Name):
+        py_ret_type = func.returns.id
+        ret_t = type_map.get(py_ret_type, 'Int')
+    elif func.body and isinstance(func.body[0], ast.Return):
+        ret_t = infer_sig(func.body[0].value)
+    else: 'Int'
+
+    arg_t = " -> ".join(arg_types + [ret_t])
+    if func.body and isinstance(func.body[0], ast.Return):
+        expr = func.body[0].value 
+        body = to_haskell_expr(expr) 
+    else: "-- empty function"
+
+    lambda_chain = body
+    for arg in reversed(args):
+        lambda_chain = f"Base.lambda \"{arg}\" $ {lambda_chain}"
+    return (f"{func.name}Def :: TElement ({arg_t})\n"
             f"{func.name}Def = definitionInModule mainModule \"{func.name}\" $\n"
-            f"  Base.lambda \"{arg}\" $\n"
-            f"    {body}\n")
+            f"  {lambda_chain}\n")
 
 # === Class generation ===
 def to_haskell_record(cls):
     fields = []
     for stmt in cls.body:
-        if isinstance(stmt, ast.Assign):
-            for tgt in stmt.targets:
-                if isinstance(tgt, ast.Name):
-                    typ = infer_sig(stmt.value)
-                    if typ == 'Int': typ = 'int32'
-                    if typ == 'String': typ = 'string'
-                    if typ == 'Bool': typ = 'boolean'
-                    fields.append((tgt.id, typ))
+        if isinstance(stmt, ast.AnnAssign): 
+            if isinstance(stmt.target, ast.Name):
+                type_annotation = stmt.annotation
+                if isinstance(type_annotation, ast.Name):
+                    py_type = type_annotation.id
+                    hs_type = {
+                        'str': 'string',
+                        'int': 'int32',
+                        'bool': 'boolean',
+                        'list': '[int32]' 
+                    }.get(py_type, 'unknown')
+                    fields.append((stmt.target.id, hs_type))
+                        
     fields_s = ',\n          '.join(f"\"{n}\" Types.>: Types.{t}" for n, t in fields)
     return (f"      def \"{cls.name}\" $\n"
             f"        Types.record [\n"
@@ -219,13 +251,11 @@ def to_haskell_variable(name, node):
                     f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
                     f"  {body}\n")
         elif isinstance(arg, ast.Name):
-            # str2 = list(s) или str2 = upper(s)
             return (f"{name}Def :: TElement ({arg_t} -> {ret_t})\n"
                     f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
                     f"  Base.lambda \"{arg.id}\" $\n"
                     f"    {body}\n")
 
-    # Новый случай: str2 = str1.upper()
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         obj = node.func.value
         if isinstance(obj, ast.Name):
@@ -234,7 +264,6 @@ def to_haskell_variable(name, node):
                     f"  Base.lambda \"{obj.id}\" $\n"
                     f"    {body}\n")
 
-    # По умолчанию — значение
     return (f"{name}Def :: TElement {ret_t}\n"
             f"{name}Def = definitionInModule mainModule \"{name}\" $\n"
             f"  {body}\n")
@@ -294,29 +323,26 @@ mainModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just "Gen
 # === Example ===
 python_code = '''
 class Person:
-    name = "Daria"
-    age = 20
+    name: str
+    age: int
+    married: bool
 
-x = 890    
+x = 890
+z = - 56   
 
 arr = [4, 5, 6]
 def func1(arr):
     return not (arr[0] == arr[-1])
-    
-#list(...) переводится только на Java и Haskell
-numbers = list("0123456789")
-new = list(old)
 
 str1 = "Wonderful"
 str2 = str1.upper()
 eq = "awesome" == "awful"
-dlina = len("Brilliant")
 
-def isEven(y):
+def isEven(y: int)-> bool:
     return True if y % 2 == 0 else False
 
-def func2(x):
-    return (x >= 10) and (x < 100)
+def func2(x, z):
+    return (x >= 10) and (z < 100)
 
 '''
 
