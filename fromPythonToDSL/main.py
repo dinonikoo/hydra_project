@@ -235,14 +235,15 @@ def to_haskell_record(cls):
 
 # === Variable generation ===
 def to_haskell_variable(name, node):
+    body = to_haskell_expr(node)
+    if body.strip().startswith("--"):
+        return f"-- {name}: {body}"
     sig = infer_sig(node)
     parts = [t.strip() for t in sig.split('->')]
     if len(parts) == 2:
         arg_t, ret_t = parts
     else:
         arg_t, ret_t = parts[0], parts[-1]
-
-    body = to_haskell_expr(node)
 
     if isinstance(node, ast.Call) and node.args:
         arg = node.args[0]
@@ -273,21 +274,38 @@ def to_haskell_variable(name, node):
 def to_haskell_module(source):
     tree = ast.parse(source)
     annotate_parents(tree)
-    classes, funcs, var = [], [], []
+    classes, funcs, var, comments = [], [], [], []
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
-            classes.append(to_haskell_record(node))
+            class_code = to_haskell_record(node)
+            if class_code.strip().startswith("--"):
+                comments.append(class_code)
+            else:
+                classes.append(class_code)
         elif isinstance(node, ast.FunctionDef):
-            funcs.append(to_haskell_function(node))
+            func_code = to_haskell_function(node)
+            if func_code.strip().startswith("--"):
+                comments.append(func_code)
+            else:
+                funcs.append(func_code)
         elif isinstance(node, ast.Assign):
             name = node.targets[0].id
-            var.append(to_haskell_variable(name, node.value))
+            var_code = to_haskell_variable(name, node.value)
+            if var_code.strip().startswith("--"):
+                comments.append(var_code)
+            else:
+                var.append(var_code)
 
     elems = []
-    elems += classes
-    elems += [f"        Base.el {n.split('Def')[0]}Def" for n in var + funcs]
-
-    header = """{-# LANGUAGE OverloadedStrings #-}
+    for cls in classes:
+        elems.append(cls)
+    for n in var + funcs:
+        elems.append(f"        Base.el {n.split('Def')[0]}Def")
+    
+    
+    comments_section = "\n".join(comments) + "\n\n" if comments else ""
+    
+    header =  """{-# LANGUAGE OverloadedStrings #-}
 
 module Hydra.Sources.Main where
 
@@ -318,7 +336,7 @@ mainModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just "Gen
     elements = [
 """ + ',\n'.join(elems) + "\n      ]\n\n"
 
-    return header + '\n'.join(var + funcs)
+    return header + '\n'.join(var + funcs) + comments_section 
 
 # === Example ===
 python_code = '''
@@ -329,6 +347,7 @@ class Person:
 
 x = 890
 z = - 56   
+w = + z
 
 arr = [4, 5, 6]
 def func1(arr):
@@ -343,6 +362,7 @@ def isEven(y: int)-> bool:
 
 def func2(x, z):
     return (x >= 10) and (z < 100)
+
 
 '''
 
