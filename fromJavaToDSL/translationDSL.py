@@ -53,7 +53,7 @@ op_map = {
     "-": {"name": "Math.sub", "return_type": "Int"},
     "*": {"name": "Math.mul", "return_type": "Int"},
     "/": {"name": "Math.div", "return_type": "Int"},
-    "%": {"name": "Math.rem", "return_type": "Int"},
+    "%": {"name": "Math.mod", "return_type": "Int"},
     "==": {"name": "Equality.equalInt32", "return_type": "Bool"},
     "!=": {"name": "Equality.notEqualInt32", "return_type": "Bool"},
     ">": {"name": "Equality.gtInt32", "return_type": "Bool"},
