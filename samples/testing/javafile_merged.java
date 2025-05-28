@@ -1,9 +1,14 @@
-public class Person {
-    public final String name;
-    public final int age;
+public class Test_class {
+    public final String field1;
+    public final int field2;
+    public final short field3;
+    public final long field4;
+    public final java.util.List<Integer> field5;
+    public final java.util.List<Short> field6;
+    public final java.util.List<Long> field7;
+    public final java.util.List<String> field8;
 }
-
-public interface Testing {
+public interface Test_interface {
     static boolean check(Integer x) {
         return ((x>5) ? "yes" : "no").isEmpty();
     }

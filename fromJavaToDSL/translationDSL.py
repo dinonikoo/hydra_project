@@ -73,16 +73,23 @@ def hydra_type_common(java_type, mode):
         "int": ("Types.int32", "Int"),
         "Integer": ("Types.int32", "Int"),
         "short": ("Types.int16", "Int"),
+        "Short": ("Types.int16", "Int"),
         "long": ("Types.int64", "Int"),
+        "Long": ("Types.int64", "Int"),
         "boolean": ("Types.boolean", "Bool"),
         "Boolean": ("Types.boolean", "Bool"),
         "String": ("Types.string", "String")
     }
     if isinstance(java_type, dict) and java_type.get("type") == "List":
         inner = hydra_type_common(java_type["of"], mode)
-        return f"Types.list {inner}" if mode == "full" else f"[{inner}]"
+        return f"Types.list ({inner})" if mode == "full" else f"[{inner}]"
+
     key = java_type if isinstance(java_type, str) else java_type.get("type")
-    return base_map.get(key, ("-- unsupported type", "-- unsupported type"))[0 if mode == "full" else 1]
+
+    if key not in base_map:
+        raise TypeError(f"Unsupported type: {key}")
+    return base_map[key][0 if mode == "full" else 1]
+
 
 # заменяем старые функции:
 def hydra_type(java_type): return hydra_type_common(java_type, mode="full")
@@ -106,7 +113,7 @@ def infer_type(ast):
             elif left_type == right_type:
                 return op_map[op]["return_type"]
         else:
-            return "-- unsupported binary operator"
+            raise ValueError(f"Неподдерживаемая бинарная операция: {op}")
 
     elif ast["type"] == "method_call":
         method_info = method_map.get(ast["method"])
@@ -130,7 +137,7 @@ def infer_type(ast):
             return f"[{first}]"
 
         if func not in function_map:
-            raise ValueError(f"Unsupported function: {func}")
+            return "Unknown"
 
         spec = function_map[func]
 
@@ -196,7 +203,7 @@ def format_value(value_ast):
             return f"{mapped} {args_wrapped}"
 
         else:
-            return f"-- unsupported method: {method}"
+            raise ValueError(f"Неподдерживаемый метод: {method}")
 
     #т.к. функция статическая, её не могут вызывать в цепочке
     elif value_ast["type"] == "function_call":
@@ -219,7 +226,7 @@ def format_value(value_ast):
             mapped = info["name"]
             return f"{mapped}{''.join(args)}"
         else:
-            return f"-- unsupported func: {func}"
+            raise ValueError(f"Неподдерживаемая функция: {func}")
 
 
     elif value_ast["type"] == "binary":
@@ -248,7 +255,7 @@ def format_value(value_ast):
         else_expr = format_value(value_ast["else"])
         return f"Logic.ifElse({cond}) ({then_expr}) ({else_expr})"
 
-    return "-- unsupported expression"
+    raise ValueError(f"Неподдерживаемое выражение")
 
 def generate_my_module(data):
     module_name = "mainModule"

@@ -1,4 +1,3 @@
-#TODO: вывод ошибок в файл
 import re
 from pathlib import Path
 
@@ -16,7 +15,7 @@ TOKEN_REGEX = re.compile(r'''
 def parse_code(code):
     def parse_type(type_str):
         type_str = type_str.strip()
-
+        type_str = re.sub(r'\bjava\.util\.', '', type_str)
         if type_str.startswith("List<") and type_str.endswith(">"):
             inner = type_str[5:-1].strip()
             return {'type': 'List', 'of': parse_type(inner)}
@@ -136,7 +135,7 @@ def parse_code(code):
                     current_fields.append({
                         "type": "const",
                         "name": name,
-                        "field_type": type_,
+                        "field_type": parse_type(type_),
                         "value": ast_
                     })
             else:
@@ -147,7 +146,7 @@ def parse_code(code):
                     current_fields.append({
                         "type": "field",
                         "name": name,
-                        "field_type": type_
+                        "field_type": parse_type(type_)
                     })
 
         i += 1
@@ -339,4 +338,5 @@ def parse(filepath):
         code = f.read()
         structures = parse_code(code)
         result.append(structures)
+        #print(result)
     return result

@@ -24,17 +24,23 @@ mainModule :: Module
 mainModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $
     Just "mainModule generated code"
   where
-    ns = Namespace "hydra.testing"
+    ns = Namespace "hydra.test_interface"
     def = datatype ns
     core = typeref $ moduleNamespace hydraCoreModule
     testing = typeref ns
 
     elements = [
-        def "Person" $ 
+        def "Test_class" $ 
             A.doc "This type generated from Java" $ 
             Types.record [
-              "name" Types.>: Types.string,
-              "age" Types.>: Types.int32
+              "field1" Types.>: Types.string,
+              "field2" Types.>: Types.int32,
+              "field3" Types.>: Types.int16,
+              "field4" Types.>: Types.int64,
+              "field5" Types.>: Types.list (Types.int32),
+              "field6" Types.>: Types.list (Types.int16),
+              "field7" Types.>: Types.list (Types.int64),
+              "field8" Types.>: Types.list (Types.string)
         ],
       el exampleDef,
       el isLowerCaseDef,

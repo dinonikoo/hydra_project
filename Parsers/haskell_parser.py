@@ -43,6 +43,7 @@ class HaskellParser:
         for step in processing_steps:
             content = step(content)
         return content
+    
 
     def remove_comments(self, content: str) -> str:
         content = re.sub(r'--.*?$', '', content, flags=re.MULTILINE)
@@ -104,7 +105,7 @@ class HaskellParser:
 
             (r'Logic\.not\s+(.+?)', r'not \1'),
             (r'Logic\.and\s+(\([^()]*\)|\w+)\s+(\([^()]*\)|\w+)', r'\1 && \2'),
-            (r'Logic\.or\s+(\([^()]*\)|\w+)\s+(\([^()]*\)|\w+)', r'\1 && \2'),
+            (r'Logic\.or\s+(\([^()]*\)|\w+)\s+(\([^()]*\)|\w+)', r'\1 || \2'),
             (r'Logic\.ifElse\s+([^\s\(]+)\s+([^\s\(]+)\s+([^\s\(]+)', r'if \1 then \2 else \3'),
             (r'Logic\.ifElse\s+\(([^\)]+)\)\s+([^\s\(]+)\s+([^\s\(]+)', r'if (\1) then \2 else \3'),
             (r'Logic\.ifElse\s+([^\s\(]+)\s+([^\s\(]+)\s+\(([^\)]*Logic\.ifElse[^\)]*)\)', r'if \1 then \2 else (\3)'),
