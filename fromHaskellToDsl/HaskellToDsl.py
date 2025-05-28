@@ -734,6 +734,8 @@ class HydraTransformer(Transformer):
             return "Types.int16"
         if typ == "Int64":
             return "Types.int64"
+        if typ == "Bool":
+            return "Bool"
         if typ.startswith("[") and typ.endswith("]"):
             inner = typ[1:-1].strip()
             return f"Types.list({self._convert_type_to_dsl(inner)})"
