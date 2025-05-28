@@ -747,7 +747,7 @@ class HydraTransformer(Transformer):
 
 # ======== CONVERTER FUNCTION =========
 def process_haskell_to_hydra(
-    haskell_code, file_name="MyMath", save_name="hydra.test", module_name="myModule"
+    haskell_code, file_name="MyMath", save_name="hydra.test", module_name="mainModule"
 ):
 
     tree = haskell_parser.parse(haskell_code)
@@ -806,9 +806,9 @@ module {file_name} where
 # ======== I/O =========
 def convertFileAPIHaskell(path_to_file_dir):
     INPUT_PATH = f"{path_to_file_dir}/initialFile.hs"
-    FILE_NAME = "initialFile"
+    FILE_NAME = "Hydra.GenDSL"
     SAVED_NAME = "hydra.test"
-    MODULE_NAME = "myModuleTest"
+    MODULE_NAME = "mainModule"
     
     try:
         with open(INPUT_PATH, "r", encoding="utf-8") as f:
