@@ -3,10 +3,11 @@ import re
 import os
 from typing import List, Optional, Tuple, Match
 
+
 class JavaParser:
     def __init__(self):
         self.common_transforms = self._build_common_transforms()
-        
+
     def parse_hydra_java(self, input_path: str, output_path: str) -> None:
         try:
             content = self._read_file(input_path)
@@ -33,6 +34,7 @@ class JavaParser:
             self.apply_transforms_recursively,
             self.fix_integer_declarations,
             self.fix_boolean_declarations,
+            self.fix_char_declarations,
             self.add_standard_imports,
             self.final_formatting
         ]
@@ -55,20 +57,27 @@ class JavaParser:
             (r'hydra\.lib\.strings\.Cat\.apply\(\s*([^)]+)\s*\)', r'String.join("", \1)'),
             (r'hydra\.lib\.strings\.Cat2\.apply\((.*?),\s*(.*?)\)', r'\1 + \2'),
             (r'hydra\.lib\.strings\.Intercalate\.apply\((.*?),\s*(.*?)\)', r'String.join(\1, \2)'),
-            (r'hydra\.lib\.strings\.SplitOn\.apply\((.*?),\s*(.*?)\)', r'\1.split(\2)'),          
+            (r'hydra\.lib\.strings\.SplitOn\.apply\((.*?),\s*(.*?)\)', r'\1.split(\2)'),
 
+            (r'hydra\.lib\.chars\.ToUpper\.apply\((\d+)\)', r'Character.toUpperCase((char)\1)'),
+            (r'hydra\.lib\.chars\.ToLower\.apply\((\d+)\)', r'Character.toLowerCase((char)\1)'),
+            (r'hydra\.lib\.chars\.IsUpper\.apply\((\d+)\)', r'Character.isUpperCase((char)\1)'),
+            (r'hydra\.lib\.chars\.IsLower\.apply\((\d+)\)', r'Character.isLowerCase((char)\1)'),
 
+            (r'hydra\.lib\.chars\.ToUpper\.apply\(\'([^\'])\'\)', r'Character.toUpperCase(\'\1\')'),
+            (r'hydra\.lib\.chars\.ToLower\.apply\(\'([^\'])\'\)', r'Character.toLowerCase(\'\1\')'),
+            (r'hydra\.lib\.chars\.IsUpper\.apply\(\'([^\'])\'\)', r'Character.isUpperCase(\'\1\')'),
+            (r'hydra\.lib\.chars\.IsLower\.apply\(\'([^\'])\'\)', r'Character.isLowerCase(\'\1\')'),
 
+            (r'hydra\.lib\.chars\.ToUpper\.apply\("([^"])"\)', r'Character.toUpperCase(\'\1\'[0])'),
+            (r'hydra\.lib\.chars\.ToLower\.apply\("([^"])"\)', r'Character.toLowerCase(\'\1\'[0])'),
+            (r'hydra\.lib\.chars\.IsUpper\.apply\("([^"])"\)', r'Character.isUpperCase(\'\1\'[0])'),
+            (r'hydra\.lib\.chars\.IsLower\.apply\("([^"])"\)', r'Character.isLowerCase(\'\1\'[0])'),
 
-            (r'hydra\.lib\.chars\.(ToUpper|ToLower|IsUpper|IsLower)\.apply\((\d+)\)',
-             r'Character.\1((char)\2)'),
-            (r'hydra\.lib\.chars\.(ToUpper|ToLower|IsUpper|IsLower)\.apply\(\'([^\'])\'\)',
-             r'Character.\1(\'\2\')'),
-            (r'hydra\.lib\.chars\.(ToUpper|ToLower|IsUpper|IsLower)\.apply\("([^"])"\)',
-             r'Character.\1(\'\2\'[0])'),
-            (r'hydra\.lib\.chars\.(ToUpper|ToLower|IsUpper|IsLower)\.apply\((.*)\)',
-             r'Character.\1(\2)'),
-            
+            (r'hydra\.lib\.chars\.ToUpper\.apply\((.*)\)', r'Character.toUpperCase(\1)'),
+            (r'hydra\.lib\.chars\.ToLower\.apply\((.*)\)', r'Character.toLowerCase(\1)'),
+            (r'hydra\.lib\.chars\.IsUpper\.apply\((.*)\)', r'Character.isUpperCase(\1)'),
+            (r'hydra\.lib\.chars\.IsLower\.apply\((.*)\)', r'Character.isLowerCase(\1)'),
 
             (r'hydra\.lib\.math\.Neg\.apply\((\d+)\)', r'-\1'),
             (r'hydra\.lib\.math\.Add\.apply\(([^,]+),\s*([^)]+)\)', r'(\1 + \2)'),
@@ -83,13 +92,15 @@ class JavaParser:
             (r'hydra\.lib\.equality\.GtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 > \2'),
             (r'hydra\.lib\.equality\.GteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 >= \2'),
             (r'hydra\.lib\.equality\.LtInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 < \2'),
-            (r'hydra\.lib\.equality\.LteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 <= \2'), 
-            
+            (r'hydra\.lib\.equality\.LteInt32\.apply\(([^,]+),\s*([^)]+)\)', r'\1 <= \2'),
 
             (r'hydra\.lib\.logic\.IfElse\.apply\(([^,]+),\s*([^,]+),\s*([^)]+)\)', r'(\1) ? \2 : \3'),
 
-        ]
+            (r'hydra\.lib\.logic\.And\.apply\(([^,]+),\s*([^)]+)\)', r'(\1 && \2)'),
+            (r'hydra\.lib\.logic\.Or\.apply\(([^,]+),\s*([^)]+)\)', r'(\1 || \2)'),
+            (r'hydra\.lib\.logic\.Not\.apply\(([^)]+)\)', r'!\1'),
 
+        ]
 
     def _transform_expression(self, expr: str) -> str:
         while True:
@@ -140,18 +151,25 @@ class JavaParser:
     def fix_integer_declarations(self, content: str) -> str:
         content = re.sub(r'Integer\s+(\w+\s*[=;])', r'int \1', content)
         content = re.sub(r'\(Integer\)\s+(\w+)', r'(int) \1', content)
+        content = re.sub(r'Integer\s+(\w+\s*\()', r'int \1', content)
+        content = re.sub(r'\((?:final\s+)?Integer\s+(\w+)\)', r'(int \1)', content)
         return content
 
     def fix_boolean_declarations(self, content: str) -> str:
         content = re.sub(r'Boolean\s+(\w+\s*[=;])', r'boolean \1', content)
         content = re.sub(r'\(Boolean\)\s+(\w+)', r'(boolean) \1', content)
+        content = re.sub(r'Boolean\s+(\w+\s*\()', r'boolean \1', content)
+        content = re.sub(r'\((?:final\s+)?Boolean\s+(\w+)\)', r'(boolean \1)', content)
+        return content
+
+    def fix_char_declarations(self, content: str) -> str:
+        content = re.sub(r'Char\s+(\w+\s*[=;])', r'char \1', content)
+        content = re.sub(r'\(Char\)\s+(\w+)', r'(char) \1', content)
         return content
 
     def add_standard_imports(self, content: str) -> str:
         imports = [
-            "import java.util.*;",
-            "import java.lang.Character;",
-            "import java.lang.Math;"
+            "import java.util.List"
         ]
         package_match = re.search(r'package\s+[\w.]+;', content)
         if package_match:
@@ -177,6 +195,7 @@ class JavaParser:
         content = re.sub(r'=\s*\n\s*', '= ', content)
         return content.strip() + '\n'
 
-if __name__ == "__main__":    
+
+if __name__ == "__main__":
     parser = JavaParser()
-    parser.parse_hydra_java(sys.argv[1], sys.argv[2])
+    parser.parse_hydra_java("input.java", "output.java")
