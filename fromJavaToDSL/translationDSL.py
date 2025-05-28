@@ -53,13 +53,17 @@ op_map = {
     "-": {"name": "Math.sub", "return_type": "Int"},
     "*": {"name": "Math.mul", "return_type": "Int"},
     "/": {"name": "Math.div", "return_type": "Int"},
-    "%": {"name": "Math.rem", "return_type": "Int"},
+    "%": {"name": "Math.mod", "return_type": "Int"},
     "==": {"name": "Equality.equalInt32", "return_type": "Bool"},
     "!=": {"name": "Equality.notEqualInt32", "return_type": "Bool"},
     ">": {"name": "Equality.gtInt32", "return_type": "Bool"},
     ">=": {"name": "Equality.gteInt32", "return_type": "Bool"},
     "<": {"name": "Equality.ltInt32", "return_type": "Bool"},
     "<=": {"name": "Equality.lteInt32", "return_type": "Bool"},
+    "&&": {"name": "Logic.and", "return_type": "Bool"},
+    "||": {"name": "Logic.or", "return_type": "Bool"},
+    "and": {"name": "Logic.and", "return_type": "Bool"},
+    "or": {"name": "Logic.or", "return_type": "Bool"},
 }
 
 
@@ -247,7 +251,12 @@ def format_value(value_ast):
 
         if op == "-":
             return f"Math.neg ({operand})"
-        return f"({op}{operand})"
+        elif op == "!":
+            return f"Logic.not ({operand})"
+        elif op == "not":
+            return f"Logic.not ({operand})"
+        else:
+            raise ValueError(f"Неподдерживаемый унарный оператор: {op}")
 
     elif value_ast["type"] == "ternary":
         cond = format_value(value_ast["condition"])

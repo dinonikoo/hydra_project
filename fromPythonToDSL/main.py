@@ -307,7 +307,7 @@ def to_haskell_module(source):
     
     header =  """{-# LANGUAGE OverloadedStrings #-}
 
-module Hydra.Sources.Main where
+module Hydra.GenDSL where
 
 import           Hydra.Dsl.Annotations
 import qualified Hydra.Dsl.Bootstrap   as Bootstrap
@@ -337,33 +337,3 @@ mainModule = Module ns elements [hydraCoreModule] [hydraCoreModule] $ (Just "Gen
 """ + ',\n'.join(elems) + "\n      ]\n\n"
 
     return header + '\n'.join(var + funcs) + comments_section 
-
-# === Example ===
-python_code = '''
-class Person:
-    name: str
-    age: int
-    married: bool
-
-x = 890
-z = - 56   
-w = + z
-
-arr = [4, 5, 6]
-def func1(arr):
-    return not (arr[0] == arr[-1])
-
-str1 = "Wonderful"
-str2 = str1.upper()
-eq = "awesome" == "awful"
-
-def isEven(y: int)-> bool:
-    return True if y % 2 == 0 else False
-
-def func2(x, z):
-    return (x >= 10) and (z < 100)
-
-
-'''
-
-print(to_haskell_module(python_code))

@@ -37,7 +37,6 @@ class HaskellParser:
             partial(self.apply_transforms_recursively, max_depth=20),
             self.compact_lists,
             self.fix_function_declarations,
-            self.add_standard_imports,
             self.final_formatting
         ]
         for step in processing_steps:
@@ -136,7 +135,8 @@ class HaskellParser:
             (r'\((\w+)\)\s*=', r'\1 ='),
             (r'(\w+)\s*::\s*(.*?)\n(\w+)\s*=', r'\1 :: \2\n\1 ='),
             (r'\((\([^()]+\))\)', r'\1'),
-            (r'\((\w+)\)', r'\1'),           
+            (r'\((\w+)\)', r'\1'),
+            (r'(\w+\s*::|\->)\s*\(([^=]*?)\)', r'\1 \2'),       
         ]
 
     def apply_transforms_recursively(self, content: str, max_depth: int = 10) -> str:
@@ -170,26 +170,12 @@ class HaskellParser:
         content = re.sub(r'(\w+)\s+(\(.*?\)|\w+)\s*=\s*', r'\1 \2 = ', content)
         return content
 
-    def add_standard_imports(self, content: str) -> str:
-        imports = [
-            "import Data.Char (chr, ord, isLower, isUpper, toLower, toUpper)",
-            "import Data.List (intercalate, intersperse, splitOn, null, length,",
-            "                 foldl, filter, map, concat, head, last, reverse,",
-            "                 tail, zip, zipWith, (!!))",
-            "import Data.Maybe (listToMaybe)",
-            "import qualified Data.List as List",
-            "import qualified Data.Text as Text"
-        ]
-        module_match = re.search(r'module\s+\w+\s+where', content)
-        if module_match:
-            pos = module_match.end()
-            content = content[:pos] + '\n\n' + '\n'.join(imports) + content[pos:]
-        return content
-
     def final_formatting(self, content: str) -> str:
+        content = content.replace('\u00A0', ' ')
         content = re.sub(r'[ \t]+\n', '\n', content)
         content = re.sub(r'\n{3,}', '\n\n', content)
         content = re.sub(r'(\S)\s*([+\-*/])\s*(\S)', r'\1 \2 \3', content)
+        content = re.sub(r'-\s*>', r'->', content)
         return content.strip() + '\n'
 
 
