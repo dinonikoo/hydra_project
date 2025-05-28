@@ -169,7 +169,7 @@ class JavaParser:
 
     def add_standard_imports(self, content: str) -> str:
         imports = [
-            "import java.util.List"
+            "import java.util.List;"
         ]
         package_match = re.search(r'package\s+[\w.]+;', content)
         if package_match:
