@@ -378,10 +378,10 @@ class HydraTransformer(Transformer):
             type_l = guess_type(lhs)
             type_r = guess_type(rhs)
 
-            #if type_l != type_r:
-                #raise ValueError(
-                   # f"❌ Несовместимые типы в выражении равенства: {lhs} ({type_l}) == {rhs} ({type_r})"
-                #)
+            if type_l != type_r and type_l != "Unknown" and type_r != "Unknown":
+                raise ValueError(
+                    f"❌ Несовместимые типы в выражении равенства: {lhs} ({type_l}) == {rhs} ({type_r})"
+                )
 
             if type_l == "String":
                 return f"Equality.equalString ({lhs}) ({rhs})"
